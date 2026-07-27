@@ -36,9 +36,17 @@ const storage = {
 
 const getAuthToken = () => storage.getItem(AUTH_TOKEN_KEY);
 
-// Instance pointing to the local API
+const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL?.trim();
+  if (!envUrl) return '/api';
+  return envUrl.endsWith('/api/v1') 
+    ? envUrl 
+    : `${envUrl.replace(/\/$/, '')}/api/v1`;
+};
+
+// Instance pointing to the API
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
