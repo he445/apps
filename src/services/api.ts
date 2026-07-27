@@ -38,10 +38,15 @@ const getAuthToken = () => storage.getItem(AUTH_TOKEN_KEY);
 
 const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL?.trim();
-  if (!envUrl) return '/api';
-  return envUrl.endsWith('/api/v1') 
-    ? envUrl 
-    : `${envUrl.replace(/\/$/, '')}/api/v1`;
+  if (envUrl) {
+    return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/$/, '')}/api/v1`;
+  }
+  // Em desenvolvimento local (npm run dev), usa o proxy local do Vite
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  // Em produção (Vercel), aponta diretamente para a API no Render
+  return 'https://ojanuan-api.onrender.com/api/v1';
 };
 
 // Instance pointing to the API
