@@ -1,0 +1,6 @@
+{
+  "name": "Ojanuan",
+  "description": "Web App de saúde mental para vínculo terapêutico e gestão operacional entre Psicólogo e Paciente",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

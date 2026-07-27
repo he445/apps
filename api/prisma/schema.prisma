@@ -1,0 +1,149 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  PATIENT
+  PROFESSIONAL
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+enum ConsultationStatus {
+  SCHEDULED
+  COMPLETED
+  PATIENT_NO_SHOW
+  CANCELLED
+}
+
+enum BillingType {
+  PER_SESSION
+  MONTHLY_CONSOLIDATED
+}
+
+enum PaymentStatus {
+  PENDING
+  ADDED_TO_TAB
+  PAID
+}
+
+model User {
+  id        String   @id @default(uuid())
+  role      Role
+  fullName  String
+  email     String   @unique
+  password  String
+  cpf       String?
+  crp       String?
+  address   String?
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings             ProfessionalSettings?
+  invitations          PatientInvitation[]
+  connectionsAsProf    ProfessionalPatient[] @relation("ProfConnections")
+  connectionsAsPatient ProfessionalPatient[] @relation("PatientConnections")
+  consultationsAsProf  Consultation[]        @relation("ProfConsultations")
+  consultationsAsPat   Consultation[]        @relation("PatConsultations")
+  assessments          SelfAssessment[]
+  guidelinesAsProf     Guideline[]           @relation("ProfGuidelines")
+  guidelinesAsPat      Guideline[]           @relation("PatGuidelines")
+  messagesSent         ChatMessage[]         @relation("Sent")
+  messagesReceived     ChatMessage[]         @relation("Received")
+}
+
+model ProfessionalSettings {
+  id                     String  @id @default(uuid())
+  professionalId         String  @unique
+  professional           User    @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  pixKey                 String
+  sessionDefaultPrice    Decimal @db.Decimal(10, 2)
+  cancellationLimitHours Int     @default(24)
+}
+
+model PatientInvitation {
+  id             String           @id @default(uuid())
+  professionalId String
+  professional   User             @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  token          String           @unique @db.VarChar(6)
+  patientName    String
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime         @default(now())
+}
+
+model ProfessionalPatient {
+  id             String   @id @default(uuid())
+  professionalId String
+  professional   User     @relation("ProfConnections", fields: [professionalId], references: [id], onDelete: Cascade)
+  patientId      String   @unique
+  patient        User     @relation("PatientConnections", fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+}
+
+model Consultation {
+  id                 String             @id @default(uuid())
+  patientId          String
+  patient            User               @relation("PatConsultations", fields: [patientId], references: [id], onDelete: Restrict)
+  patientNameForTax  String
+  patientCpfForTax   String?
+  professionalId     String
+  professional       User               @relation("ProfConsultations", fields: [professionalId], references: [id], onDelete: Restrict)
+  dateTime           DateTime
+  sessionPrice       Decimal            @db.Decimal(10, 2)
+  status             ConsultationStatus @default(SCHEDULED)
+  billingType        BillingType        @default(PER_SESSION)
+  paymentStatus      PaymentStatus      @default(PENDING)
+  paymentConfirmedAt DateTime?
+
+  @@index([professionalId, dateTime])
+  @@index([patientId, dateTime])
+}
+
+model SelfAssessment {
+  id                String   @id @default(uuid())
+  patientId         String
+  patient           User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  moodScore         Int
+  anxietyScore      Int
+  sleepScore        Int
+  energyScore       Int      @default(3)
+  socialInteraction Boolean  @default(true)
+  quickNote         String?  @db.VarChar(150)
+  createdAt         DateTime @default(now())
+
+  @@index([patientId, createdAt])
+}
+
+model Guideline {
+  id             String   @id @default(uuid())
+  patientId      String
+  patient        User     @relation("PatGuidelines", fields: [patientId], references: [id], onDelete: Cascade)
+  professionalId String
+  professional   User     @relation("ProfGuidelines", fields: [professionalId], references: [id], onDelete: Cascade)
+  text           String   @db.VarChar(500)
+  createdAt      DateTime @default(now())
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  senderId    String
+  sender      User     @relation("Sent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId  String
+  receiver    User     @relation("Received", fields: [receiverId], references: [id], onDelete: Cascade)
+  messageText String   @db.VarChar(1000)
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([senderId, receiverId, createdAt])
+}

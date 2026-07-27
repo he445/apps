@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+api/node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+api/dist/
+build/
+api/tsconfig.tsbuildinfo
+
+# Environment & Secrets (NEVER COMMIT SENSITIVE KEYS)
+.env
+.env.local
+.env.*.local
+api/.env
+
+# Scratch, Logs & Coverage
+scratch/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+
+# IDE & System Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.gemini/
+
+# Preserve example environment files
+!.env.example
+!api/.env.example
