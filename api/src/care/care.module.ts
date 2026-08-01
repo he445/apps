@@ -2,15 +2,21 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Injecta
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BillingType, ConsultationStatus, InvitationStatus, PaymentStatus, Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CurrentUser, JwtUser } from '../common/auth';
 import { PrismaService } from '../common/prisma.service';
 
 class CreateConsultationDto {
   @IsString() patientId!: string;
   @IsDateString() dateTime!: string;
-  @IsString() sessionPrice!: string;
+  @IsString() @MinLength(1) @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'Valor de sessão inválido.' }) sessionPrice!: string;
   @IsEnum(BillingType) billingType!: BillingType;
+}
+
+class UpdateConsultationDto {
+  @IsOptional() @IsDateString() dateTime?: string;
+  @IsOptional() @IsString() @MinLength(1) @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'Valor de sessão inválido.' }) sessionPrice?: string;
+  @IsOptional() @IsEnum(BillingType) billingType?: BillingType;
 }
 
 class AssessmentDto {
@@ -61,7 +67,7 @@ class DashboardService {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas profissionais podem acessar esta área.');
 
     const connectionRows = await this.prisma.professionalPatient.findMany({
-      where: { professionalId: user.sub },
+      where: { professionalId: user.sub, patient: { isDeleted: false } },
       include: { patient: { select: { id: true, fullName: true, email: true, cpf: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -222,7 +228,10 @@ class ConsultationsService {
   list(user: JwtUser) {
     return this.prisma.consultation.findMany({
       where: user.role === Role.PROFESSIONAL ? { professionalId: user.sub } : { patientId: user.sub },
-      include: { patient: { select: { fullName: true } } },
+      include: {
+        patient: { select: { id: true, fullName: true, email: true, cpf: true } },
+        professional: { select: { id: true, fullName: true, settings: { select: { pixKey: true } } } },
+      },
       orderBy: { dateTime: 'asc' },
     });
   }
@@ -241,6 +250,35 @@ class ConsultationsService {
         sessionPrice: dto.sessionPrice,
         billingType: dto.billingType,
       },
+      include: {
+        patient: { select: { id: true, fullName: true, email: true, cpf: true } },
+        professional: { select: { id: true, fullName: true } },
+      },
+    });
+  }
+  async update(user: JwtUser, id: string, dto: UpdateConsultationDto) {
+    if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas o profissional pode editar consultas.');
+    const consultation = await this.prisma.consultation.findUnique({ where: { id } });
+    if (!consultation) throw new NotFoundException('Consulta não encontrada.');
+    if (consultation.professionalId !== user.sub) throw new ForbiddenException('Acesso negado.');
+    if (consultation.status === 'CANCELLED') throw new BadRequestException('Não é possível editar uma consulta cancelada.');
+
+    const price = dto.sessionPrice !== undefined ? Number(dto.sessionPrice) : undefined;
+    if (price !== undefined && (isNaN(price) || price < 0)) {
+      throw new BadRequestException('Valor da sessão inválido.');
+    }
+
+    return this.prisma.consultation.update({
+      where: { id },
+      data: {
+        ...(dto.dateTime !== undefined && { dateTime: new Date(dto.dateTime) }),
+        ...(dto.sessionPrice !== undefined && { sessionPrice: dto.sessionPrice }),
+        ...(dto.billingType !== undefined && { billingType: dto.billingType }),
+      },
+      include: {
+        patient: { select: { id: true, fullName: true, email: true, cpf: true } },
+        professional: { select: { id: true, fullName: true } },
+      },
     });
   }
   async cancel(user: JwtUser, id: string) {
@@ -258,10 +296,11 @@ class ConsultationsService {
     });
   }
   async confirmPayment(user: JwtUser, id: string) {
+    if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas o profissional pode confirmar o recebimento do pagamento.');
     const consultation = await this.prisma.consultation.findUnique({ where: { id } });
     if (!consultation) throw new NotFoundException('Consulta não encontrada.');
-    if (consultation.professionalId !== user.sub && consultation.patientId !== user.sub) {
-      throw new ForbiddenException('Apenas os participantes da consulta podem alterar o status de pagamento.');
+    if (consultation.professionalId !== user.sub) {
+      throw new ForbiddenException('Acesso negado: consulta não pertence a este profissional.');
     }
     return this.prisma.consultation.update({
       where: { id },
@@ -491,6 +530,7 @@ class ConsultationsController {
   constructor(private readonly service: ConsultationsService) {}
   @Get() @ApiOperation({ summary: 'Listar consultas' }) list(@CurrentUser() user: JwtUser) { return this.service.list(user); }
   @Post() @ApiOperation({ summary: 'Agendar consulta (PROFESSIONAL)' }) create(@CurrentUser() user: JwtUser, @Body() dto: CreateConsultationDto) { return this.service.create(user, dto); }
+  @Patch(':id') @ApiOperation({ summary: 'Editar consulta (PROFESSIONAL)' }) update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateConsultationDto) { return this.service.update(user, id, dto); }
   @Patch(':id/cancel') @ApiOperation({ summary: 'Cancelar consulta' }) cancel(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.cancel(user, id); }
   @Patch(':id/payment') @ApiOperation({ summary: 'Confirmar pagamento PIX' }) confirm(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.confirmPayment(user, id); }
 }

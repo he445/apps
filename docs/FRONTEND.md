@@ -66,9 +66,11 @@ src/
 | `/esqueci-minha-senha` | `ForgotPassword` | Público | Solicitação de recuperação de senha |
 | `/perfil` | `Perfil` | Autenticado | Configurações de perfil |
 | `/pro/dashboard` | `pro/Dashboard` | PROFESSIONAL | Painel do psicólogo |
+| `/pro/agenda` | `pro/Agenda` | PROFESSIONAL | Agenda completa e agendamentos por paciente |
 | `/pro/paciente/:id` | `PacienteDetail` | PROFESSIONAL | Detalhe de paciente e diário clínico |
 | `/pro/financeiro` | `pro/Financeiro` | PROFESSIONAL | Gestão financeira e Carnê-Leão |
 | `/paciente/dashboard` | `paciente/Dashboard` | PATIENT | Painel do paciente |
+| `/paciente/agenda` | `paciente/Agenda` | PATIENT | Visualização de consultas agendadas e solicitações |
 | `/paciente/progresso` | `paciente/Progresso` | PATIENT | Gráficos de bem-estar |
 | `/paciente/chat` | `Chat` | Autenticado | Chat clínico |
 | `/paciente/financeiro` | `paciente/Financeiro` | PATIENT | Histórico de sessões e PIX |

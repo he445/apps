@@ -20,12 +20,14 @@ import Perfil from './pages/Perfil';
 import DashboardPro from './pages/pro/Dashboard';
 import PacienteDetail from './pages/pro/PacienteDetail';
 import FinanceiroPro from './pages/pro/Financeiro';
+import AgendaPro from './pages/pro/Agenda';
 
 // Patient Pages
 import DashboardPaciente from './pages/paciente/Dashboard';
 import ProgressoPaciente from './pages/paciente/Progresso';
 import Chat from './pages/paciente/Chat';
 import FinanceiroPaciente from './pages/paciente/Financeiro';
+import AgendaPaciente from './pages/paciente/Agenda';
 
 // --- ROUTE GUARDS ---
 
@@ -148,6 +150,16 @@ export default function App() {
                 </PrivateRoute>
               }
             />
+            <Route
+              path="/pro/agenda"
+              element={
+                <PrivateRoute>
+                  <RoleGuard allowedRole="PROFESSIONAL">
+                    <AgendaPro />
+                  </RoleGuard>
+                </PrivateRoute>
+              }
+            />
 
             {/* PATIENT SECURED ROUTES */}
             <Route
@@ -156,6 +168,16 @@ export default function App() {
                 <PrivateRoute>
                   <RoleGuard allowedRole="PATIENT">
                     <DashboardPaciente />
+                  </RoleGuard>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/paciente/agenda"
+              element={
+                <PrivateRoute>
+                  <RoleGuard allowedRole="PATIENT">
+                    <AgendaPaciente />
                   </RoleGuard>
                 </PrivateRoute>
               }

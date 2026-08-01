@@ -133,6 +133,7 @@ Resposta `201`: objeto `PatientInvitation` com `token` de 6 caracteres e validad
 |--------|------|------|-----------|
 | `GET` | `/consultations` | Ambos | Listar consultas do usuário |
 | `POST` | `/consultations` | PROFESSIONAL | Agendar consulta |
+| `PATCH` | `/consultations/:id` | PROFESSIONAL | Editar data, valor ou tipo de cobrança |
 | `PATCH` | `/consultations/:id/cancel` | Ambos | Cancelar consulta |
 | `PATCH` | `/consultations/:id/payment` | PROFESSIONAL | Confirmar pagamento PIX |
 

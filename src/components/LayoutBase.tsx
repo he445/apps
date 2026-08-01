@@ -17,7 +17,8 @@ import {
   TrendingUp, 
   MessageSquare, 
   ShieldCheck,
-  Stethoscope
+  Stethoscope,
+  Calendar
 } from 'lucide-react';
 
 interface LayoutBaseProps {
@@ -54,12 +55,14 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
   // Navigation Items per Role
   const proNavigation = [
     { name: 'Pacientes', path: '/pro/dashboard', icon: Users, hasBadge: false },
+    { name: 'Agenda', path: '/pro/agenda', icon: Calendar, hasBadge: false },
     { name: 'Financeiro', path: '/pro/financeiro', icon: DollarSign, hasBadge: false },
     { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
   ];
 
   const patientNavigation = [
     { name: 'Início', path: '/paciente/dashboard', icon: Home, hasBadge: false },
+    { name: 'Agenda', path: '/paciente/agenda', icon: Calendar, hasBadge: false },
     { name: 'Progresso', path: '/paciente/progresso', icon: TrendingUp, hasBadge: false },
     { name: 'Chat', path: '/paciente/chat', icon: MessageSquare, hasBadge: hasUnreadMessages },
     { name: 'Financeiro', path: '/paciente/financeiro', icon: DollarSign, hasBadge: false },

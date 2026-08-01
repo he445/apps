@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Button, Card, Input, Skeleton } from '../../components/UI';
+import { ModalAgendamento } from '../../components/ModalAgendamento';
 import { toast } from 'sonner';
 import { 
   LineChart, 
@@ -60,6 +61,7 @@ export default function PacienteDetail() {
   const [orientationTitle, setOrientationTitle] = useState('');
   const [orientationContent, setOrientationContent] = useState('');
   const [sendingOrientation, setSendingOrientation] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -135,20 +137,31 @@ export default function PacienteDetail() {
     <div className="flex flex-col gap-8">
       
       {/* Header Controls */}
-      <div className="flex items-center gap-3">
-        <Button 
-          onClick={() => navigate('/pro/dashboard')} 
-          variant="outline" 
-          className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#6D736E]"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <span className="text-xs uppercase font-bold text-[#7A8B76] tracking-wider">Acompanhamento Clínico</span>
-          <h1 className="text-2xl font-bold text-[#2C332D] tracking-tight">
-            {loading ? <Skeleton className="h-8 w-48" /> : patient?.name}
-          </h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={() => navigate('/pro/dashboard')} 
+            variant="outline" 
+            className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#6D736E]"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <span className="text-xs uppercase font-bold text-[#7A8B76] tracking-wider">Acompanhamento Clínico</span>
+            <h1 className="text-2xl font-bold text-[#2C332D] tracking-tight">
+              {loading ? <Skeleton className="h-8 w-48" /> : patient?.name}
+            </h1>
+          </div>
         </div>
+
+        <Button
+          onClick={() => setIsScheduleModalOpen(true)}
+          variant="primary"
+          className="bg-[#7A8B76] hover:bg-[#687764] text-white flex items-center gap-2"
+        >
+          <Calendar className="h-4 w-4" />
+          <span>Agendar Consulta</span>
+        </Button>
       </div>
 
       {/* Alarme Crítico */}
@@ -368,10 +381,16 @@ export default function PacienteDetail() {
             </Card>
 
           </div>
-
         </div>
       )}
 
+      {/* Modal de Agendamento */}
+      <ModalAgendamento
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onSuccess={() => toast.success('Agendamento realizado com sucesso!')}
+        initialPatientId={id}
+      />
     </div>
   );
 }

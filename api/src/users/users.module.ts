@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Injectable, Module, Put, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser } from '../common/auth';
 import { PrismaService } from '../common/prisma.service';
 
 class DeleteAccountDto {
   @IsString()
+  @IsNotEmpty()
   password!: string;
 }
 
@@ -30,14 +31,13 @@ class UpdateProfileDto {
 class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async eraseActiveData(user: JwtUser, passwordCheck?: string) {
+  async eraseActiveData(user: JwtUser, passwordCheck: string) {
+    if (!passwordCheck) throw new BadRequestException('Informe sua senha para confirmar a exclusão da conta.');
     const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub } });
     if (!dbUser) throw new NotFoundException('Usuário não encontrado.');
 
-    if (passwordCheck) {
-      const valid = await bcrypt.compare(passwordCheck, dbUser.password);
-      if (!valid) throw new UnauthorizedException('Senha incorreta.');
-    }
+    const valid = await bcrypt.compare(passwordCheck, dbUser.password);
+    if (!valid) throw new UnauthorizedException('Senha incorreta.');
 
     await this.prisma.$transaction([
       this.prisma.chatMessage.deleteMany({ where: { OR: [{ senderId: user.sub }, { receiverId: user.sub }] } }),
@@ -154,8 +154,8 @@ class UsersController {
 
   @Delete('me')
   @ApiOperation({ summary: 'Excluir conta (LGPD Soft Delete)' })
-  deleteMyAccount(@CurrentUser() user: JwtUser, @Body() dto?: DeleteAccountDto) {
-    return this.users.eraseActiveData(user, dto?.password);
+  deleteMyAccount(@CurrentUser() user: JwtUser, @Body() dto: DeleteAccountDto) {
+    return this.users.eraseActiveData(user, dto.password);
   }
 
   @Put('profile')

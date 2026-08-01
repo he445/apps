@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Get, GoneException, Injectable, Module, NotFoundException, Param, Post } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, GoneException, Injectable, Module, NotFoundException, Param, Post } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { InvitationStatus, Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
@@ -45,8 +45,11 @@ class InvitationsService {
     });
   }
 
-  async create(professionalId: string, _patientName?: string) {
-    return this.getOrCreateProfessionalInviteToken(professionalId);
+  async create(user: JwtUser, _patientName?: string) {
+    if (user.role !== Role.PROFESSIONAL) {
+      throw new ForbiddenException('Apenas profissionais podem gerar convites.');
+    }
+    return this.getOrCreateProfessionalInviteToken(user.sub);
   }
 
   async preview(token: string) {
@@ -74,7 +77,7 @@ class InvitationsService {
 @Controller('invitations')
 class InvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
-  @Post() @ApiBearerAuth('JWT-auth') @ApiOperation({ summary: 'Criar convite para paciente (PROFESSIONAL)' }) create(@CurrentUser() user: JwtUser, @Body() dto: CreateInvitationDto) { return this.invitations.create(user.sub, dto.patientName); }
+  @Post() @ApiBearerAuth('JWT-auth') @ApiOperation({ summary: 'Criar convite para paciente (PROFESSIONAL)' }) create(@CurrentUser() user: JwtUser, @Body() dto: CreateInvitationDto) { return this.invitations.create(user, dto.patientName); }
   @Public() @Get(':token') @ApiOperation({ summary: 'Visualizar convite por token (público)' }) preview(@Param('token') token: string) { return this.invitations.preview(token.toUpperCase()); }
   @Public() @Post(':token/accept') @ApiOperation({ summary: 'Aceitar convite e criar conta de paciente' }) accept(@Param('token') token: string, @Body() dto: AcceptInvitationDto) { return this.invitations.accept(token.toUpperCase(), dto); }
 }

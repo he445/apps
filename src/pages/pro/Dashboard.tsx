@@ -207,10 +207,19 @@ export default function DashboardPro() {
 
         {/* Agenda / Upcoming sessions list */}
         <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-bold text-[#2C332D] flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-[#C16E59]" />
-            <span>Consultas Agendadas</span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-[#2C332D] flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-[#C16E59]" />
+              <span>Consultas Agendadas</span>
+            </h2>
+            <Button
+              onClick={() => navigate('/pro/agenda')}
+              variant="outline"
+              className="text-xs px-3 py-1.5 border-[#7A8B76]/30 text-[#7A8B76] hover:bg-[#7A8B76]/10"
+            >
+              Ver Agenda Completa
+            </Button>
+          </div>
 
           <Card className="shadow-2xs">
             {loading ? (

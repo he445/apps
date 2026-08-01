@@ -339,8 +339,27 @@ export default function DashboardPaciente() {
           </Card>
         </div>
 
-        {/* Right column: Psychologist's Orientations Mural */}
-        <div className="flex flex-col gap-4">
+        {/* Right column: Agenda & Orientations Mural */}
+        <div className="flex flex-col gap-6">
+          {/* Quick Agenda Link Card */}
+          <Card 
+            className="bg-[#7A8B76]/10 border border-[#7A8B76]/20 p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-[#7A8B76]/15 transition-all shadow-2xs"
+            onClick={() => navigate('/paciente/agenda')}
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="bg-[#7A8B76] text-white p-3 rounded-xl">
+                <CalendarCheck className="h-6 w-6" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-[#2C332D]">Minhas Consultas Agendadas</span>
+                <span className="text-xs text-[#6D736E]">Confira próximos horários e solicitações</span>
+              </div>
+            </div>
+            <Button variant="outline" className="text-xs bg-white text-[#7A8B76] border-[#7A8B76]/30">
+              Ver Agenda
+            </Button>
+          </Card>
+
           <h2 className="text-lg font-bold text-[#2C332D] flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-[#7A8B76]" />
             <span>Mural de Orientações Clínicas</span>
