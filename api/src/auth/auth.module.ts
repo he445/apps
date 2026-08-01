@@ -57,7 +57,7 @@ class AuthService {
         const invitation = await tx.patientInvitation.findUnique({
           where: { token: inviteCode.toUpperCase() },
         });
-        if (!invitation || invitation.status !== InvitationStatus.PENDING || invitation.expiresAt < new Date()) {
+        if (!invitation || invitation.expiresAt < new Date()) {
           throw new GoneException('Convite inválido ou expirado.');
         }
         professionalId = invitation.professionalId;
@@ -80,12 +80,6 @@ class AuthService {
         await tx.professionalPatient.create({
           data: { professionalId, patientId: user.id },
         });
-        if (invitationId) {
-          await tx.patientInvitation.update({
-            where: { id: invitationId },
-            data: { status: InvitationStatus.ACCEPTED },
-          });
-        }
       }
 
       const accessToken = this.token(user);
@@ -130,9 +124,8 @@ class AuthService {
       where: { token: token.toUpperCase() },
       include: { professional: { select: { fullName: true } } },
     });
-    if (!invitation) throw new NotFoundException('Convite não encontrado.');
-    if (invitation.status !== InvitationStatus.PENDING || invitation.expiresAt < new Date()) {
-      throw new GoneException('Convite expirado ou já utilizado.');
+    if (!invitation || invitation.expiresAt < new Date()) {
+      throw new GoneException('Convite expirado ou inválido.');
     }
     return {
       token: invitation.token,

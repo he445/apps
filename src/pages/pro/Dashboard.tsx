@@ -49,8 +49,9 @@ export default function DashboardPro() {
       try {
         const patientsRes = await api.get('/care/professional/patients');
         setPatients(patientsRes.data.patients);
-        setInviteCode(patientsRes.data.inviteCode || '');
-        setInviteLink(patientsRes.data.inviteLink || (patientsRes.data.inviteCode ? `${window.location.origin}/convite/${patientsRes.data.inviteCode}` : ''));
+        const code = patientsRes.data.inviteCode || '';
+        setInviteCode(code);
+        setInviteLink(code ? `${window.location.origin}/convite/${code}` : (patientsRes.data.inviteLink || ''));
 
         const financeRes = await api.get('/consultations');
         // Filter future sessions for agenda (e.g., PENDING status or future dates)
@@ -77,11 +78,12 @@ export default function DashboardPro() {
     setIsGenerating(true);
     try {
       const res = await api.post('/care/professional/invitations');
-      setInviteCode(res.data.inviteCode || '');
-      setInviteLink(res.data.inviteLink || '');
-      toast.success('Novo código de convite gerado.');
+      const code = res.data.inviteCode || res.data.code || res.data.token || '';
+      setInviteCode(code);
+      setInviteLink(code ? `${window.location.origin}/convite/${code}` : (res.data.inviteLink || ''));
+      toast.success('Link de convite do psicólogo pronto para compartilhar.');
     } catch (err) {
-      toast.error('Não foi possível gerar um novo convite.');
+      toast.error('Não foi possível obter o convite.');
     } finally {
       setIsGenerating(false);
     }

@@ -26,27 +26,45 @@ class AcceptInvitationDto {
 @Injectable()
 class InvitationsService {
   constructor(private readonly prisma: PrismaService) {}
-  async create(professionalId: string, patientName: string) {
+
+  private async getOrCreateProfessionalInviteToken(professionalId: string) {
+    const existing = await this.prisma.patientInvitation.findFirst({
+      where: { professionalId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) return existing;
+
     const token = randomBytes(5).toString('base64url').toUpperCase().slice(0, 6);
-    return this.prisma.patientInvitation.create({ data: { professionalId, patientName, token, expiresAt: new Date(Date.now() + 7 * 86_400_000) } });
+    return this.prisma.patientInvitation.create({
+      data: {
+        professionalId,
+        patientName: 'Paciente',
+        token,
+        expiresAt: new Date(Date.now() + 100 * 365 * 86_400_000),
+      },
+    });
   }
+
+  async create(professionalId: string, _patientName?: string) {
+    return this.getOrCreateProfessionalInviteToken(professionalId);
+  }
+
   async preview(token: string) {
     const normalizedToken = token.trim().toUpperCase();
     const invitation = await this.prisma.patientInvitation.findUnique({ where: { token: normalizedToken }, include: { professional: { select: { fullName: true } } } });
-    if (!invitation) throw new NotFoundException('Convite não encontrado.');
-    if (invitation.status !== InvitationStatus.PENDING || invitation.expiresAt < new Date()) throw new GoneException('Convite expirado ou já utilizado.');
+    if (!invitation || invitation.expiresAt < new Date()) throw new GoneException('Convite inválido ou expirado.');
     return { patientName: invitation.patientName, professionalName: invitation.professional.fullName, expiresAt: invitation.expiresAt };
   }
+
   async accept(token: string, dto: AcceptInvitationDto) {
     const normalizedToken = token.trim().toUpperCase();
     return this.prisma.$transaction(async (tx) => {
       const invitation = await tx.patientInvitation.findUnique({ where: { token: normalizedToken } });
-      if (!invitation || invitation.status !== InvitationStatus.PENDING || invitation.expiresAt < new Date()) throw new GoneException('Convite inválido ou expirado.');
+      if (!invitation || invitation.expiresAt < new Date()) throw new GoneException('Convite inválido ou expirado.');
       const existing = await tx.user.findUnique({ where: { email: dto.email.toLowerCase() } });
       if (existing) throw new ConflictException('E-mail já cadastrado.');
       const patient = await tx.user.create({ data: { fullName: dto.fullName, email: dto.email.toLowerCase(), password: await bcrypt.hash(dto.password, 12), cpf: dto.cpf, role: Role.PATIENT } });
       await tx.professionalPatient.create({ data: { professionalId: invitation.professionalId, patientId: patient.id } });
-      await tx.patientInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.ACCEPTED } });
       return { id: patient.id, fullName: patient.fullName, role: patient.role };
     });
   }

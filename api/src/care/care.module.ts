@@ -93,12 +93,7 @@ class DashboardService {
       };
     }));
 
-    const pendingInvite = await this.prisma.patientInvitation.findFirst({
-      where: { professionalId: user.sub, status: InvitationStatus.PENDING, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const inviteToken = pendingInvite?.token ?? (await this.createInviteToken(user.sub));
+    const inviteToken = await this.createInviteToken(user.sub);
     return {
       patients,
       inviteCode: inviteToken,
@@ -179,17 +174,13 @@ class DashboardService {
         include: { professional: { select: { id: true, fullName: true } } },
       });
 
-      if (!invitation || invitation.status !== InvitationStatus.PENDING || invitation.expiresAt < new Date()) {
+      if (!invitation || invitation.expiresAt < new Date()) {
         throw new NotFoundException('Convite inválido ou expirado.');
       }
 
       await tx.professionalPatient.deleteMany({ where: { patientId: user.sub } });
       await tx.professionalPatient.create({
         data: { professionalId: invitation.professionalId, patientId: user.sub },
-      });
-      await tx.patientInvitation.update({
-        where: { id: invitation.id },
-        data: { status: InvitationStatus.ACCEPTED },
       });
 
       return {
@@ -201,13 +192,19 @@ class DashboardService {
   }
 
   private async createInviteToken(professionalId: string) {
+    const existing = await this.prisma.patientInvitation.findFirst({
+      where: { professionalId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) return existing.token;
+
     const token = randomBytes(5).toString('base64url').toUpperCase().slice(0, 6);
     await this.prisma.patientInvitation.create({
       data: {
         professionalId,
         patientName: 'Paciente',
         token,
-        expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        expiresAt: new Date(Date.now() + 100 * 365 * 86_400_000),
       },
     });
     return token;
