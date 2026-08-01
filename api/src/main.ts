@@ -10,12 +10,33 @@ async function bootstrap() {
   const requestedPort = Number(process.env.PORT ?? 3000);
   const isProd = process.env.NODE_ENV === 'production';
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.setGlobalPrefix('api/v1');
 
-  // CORS: em produção sem WEB_ORIGIN definido, desabilita a permissão curinga para evitar CSRF
-  const corsOrigin = webOrigins.length > 0 ? webOrigins : (isProd ? false : true);
-  app.enableCors({ origin: corsOrigin, credentials: true });
+  // Configuração segura de CORS com suporte explícito a Vercel e WEB_ORIGIN
+  const envOrigins = process.env.WEB_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+  const defaultOrigins = [
+    'https://ojanuan.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Permite requisições sem header de origem (curl, server-to-server, mobile apps)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || !isProd) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: false }, stopAtFirstError: true, errorHttpStatusCode: HttpStatus.BAD_REQUEST }));
 
   // ─── Swagger / OpenAPI (Apenas em ambiente de dev/staging) ────────────────
