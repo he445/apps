@@ -9,7 +9,9 @@
     "dev:web": "vite",
     "dev:full": "concurrently --names \"API,WEB\" --prefix-colors \"cyan,magenta\" \"npm run dev:api\" \"npm run dev:web\"",
     "build": "vite build",
+    "build:api": "npm --prefix api install && npm --prefix api run build",
     "start": "vite preview",
+    "start:api": "npm --prefix api run start",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:e2e": "cd api && npm run test:e2e"

@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { Request, Response } from 'express';
 import { JwtUser } from './auth';
 
 export interface RouteTelemetry {
@@ -143,8 +142,8 @@ export class TelemetryService {
 export class TelemetryInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const http = context.switchToHttp();
-    const request = http.getRequest<Request & { user?: JwtUser }>();
-    const response = http.getResponse<Response>();
+    const request = http.getRequest<{ method: string; originalUrl?: string; url: string; ip?: string; user?: JwtUser }>();
+    const response = http.getResponse<{ statusCode?: number }>();
 
     const startTime = Date.now();
     const method = request.method;
