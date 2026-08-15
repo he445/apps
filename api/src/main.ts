@@ -17,26 +17,33 @@ async function bootstrap() {
   }));
   app.setGlobalPrefix('api/v1');
 
-  // Origens explícitas: esta API usa Authorization Bearer, portanto não precisa
-  // aceitar origens arbitrárias nem credenciais de cookies entre sites.
+  // Configuração segura e flexível de CORS com suporte a Vercel e WEB_ORIGIN
   const envOrigins = process.env.WEB_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
-  const defaultOrigins = isProd
-    ? ['https://ojanuan.vercel.app']
-    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+  const defaultOrigins = [
+    'https://ojanuan.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
   const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Clientes não-browser (health checks, server-to-server) não enviam Origin.
+      // Clientes não-browser (health checks, server-to-server, mobile) não enviam Origin
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+
+      // Permite origens explícitas, qualquer deploy/preview na Vercel (*.vercel.app) ou localhost em dev
+      const isVercelDomain = /^https:\/\/([a-zA-Z0-9-]+\.)*vercel\.app$/.test(origin);
+      if (allowedOrigins.includes(origin) || isVercelDomain || !isProd) {
         return callback(null, true);
       }
-      return callback(new Error('Origem não permitida pela política de CORS.'));
+      return callback(null, false);
     },
-    credentials: false,
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Authorization'],
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: false }, stopAtFirstError: true, errorHttpStatusCode: HttpStatus.BAD_REQUEST }));
 
