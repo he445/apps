@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { ValidationPipe, HttpStatus } from '@nestjs/common';
+import { PrismaClient, Role } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const PORT = 3000;
 const API_BASE = `http://127.0.0.1:${PORT}/api/v1`;
@@ -9,6 +11,7 @@ async function runIntegrationSuite() {
   console.log('🚀 Executando Suíte de Testes de Integração End-to-End Ojanuan...\n');
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  const prisma = new PrismaClient();
   app.setGlobalPrefix('api/v1');
   app.enableCors({ origin: true, credentials: true });
   app.useGlobalPipes(
@@ -268,10 +271,133 @@ async function runIntegrationSuite() {
       if (res.status !== 200 || !data.deleted) throw new Error(`Status ${res.status}`);
     });
 
+    // --- ADMIN MODULE & TELEMETRY SUITE ---
+    const adminEmail = `admin-suite-${timestamp}@ojanuan.app`;
+    let adminAuthToken = '';
+    let demoProId = '';
+
+    // 19. Public admin registration must be denied
+    await testStep('POST /auth/register (ADMIN bloqueado)', async () => {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: 'Administrador de Sistema',
+          email: adminEmail,
+          password,
+          role: 'ADMIN',
+        }),
+      });
+      if (res.status !== 403) throw new Error(`Esperado 403, recebido ${res.status}`);
+    });
+
+    // 20. Provision the test administrator outside the public HTTP surface.
+    await testStep('Provisionar ADMIN para a suíte', async () => {
+      const passwordHash = await bcrypt.hash(password, 12);
+      await prisma.user.upsert({
+        where: { email: adminEmail },
+        update: { role: Role.ADMIN, password: passwordHash, isDeleted: false },
+        create: {
+          fullName: 'Administrador de Sistema',
+          email: adminEmail,
+          password: passwordHash,
+          role: Role.ADMIN,
+        },
+      });
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: adminEmail, password }),
+      });
+      const data: any = await res.json();
+      if (res.status !== 200 || !data.token) throw new Error(`Status ${res.status}`);
+      adminAuthToken = data.token;
+    });
+
+    // 20. Admin Route Guard (Bloqueio para usuários normais)
+    await testStep('GET /admin/overview (403 Forbidden para Profissional comum)', async () => {
+      const res = await fetch(`${API_BASE}/admin/overview`, {
+        headers: { Authorization: `Bearer ${proAuthToken}` },
+      });
+      if (res.status !== 403) throw new Error(`Esperado 403, recebido ${res.status}`);
+    });
+
+    // 21. Admin Overview (Acesso com Admin)
+    await testStep('GET /admin/overview (Métricas e KPIs)', async () => {
+      const res = await fetch(`${API_BASE}/admin/overview`, {
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 200 || !data.kpis || typeof data.kpis.totalUsers !== 'number') {
+        throw new Error(`Status ${res.status} ou payload inválido`);
+      }
+    });
+
+    // 22. Telemetria de Rotas
+    await testStep('GET /admin/telemetry/routes (Observabilidade & Latência)', async () => {
+      const res = await fetch(`${API_BASE}/admin/telemetry/routes`, {
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 200 || !Array.isArray(data.routes)) throw new Error(`Status ${res.status}`);
+    });
+
+    // 23. Sandbox Seed (Criação de Personas Demo)
+    await testStep('POST /admin/sandbox/seed (Gerar Massa de Teste 1-Clique)', async () => {
+      const res = await fetch(`${API_BASE}/admin/sandbox/seed`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 201 && res.status !== 200) throw new Error(`Status ${res.status}`);
+      if (!data.testUsers?.professional?.id) throw new Error('ID do profissional demo ausente');
+      demoProId = data.testUsers.professional.id;
+    });
+
+    // 24. Actor Token Impersonation (RFC 8693)
+    let impersonatedToken = '';
+    await testStep('POST /admin/impersonate/:id (Geração de Actor Token Seguro)', async () => {
+      const res = await fetch(`${API_BASE}/admin/impersonate/${demoProId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 201 && res.status !== 200) throw new Error(`Status ${res.status}`);
+      if (!data.token || !data.user.isImpersonated) throw new Error('Token de simulação inválido');
+      impersonatedToken = data.token;
+    });
+
+    // 25. Impersonation Guardrail (Bloqueio de ação destrutiva na simulação)
+    await testStep('DELETE /users/me (Guardrail: Bloqueio 403 durante simulação)', async () => {
+      const res = await fetch(`${API_BASE}/users/me`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${impersonatedToken}` },
+        body: JSON.stringify({ password: 'Demo1234!' }),
+      });
+      if (res.status !== 403) throw new Error(`Esperado 403 para Guardrail, recebido ${res.status}`);
+    });
+
+    // 26. Limpeza Segura da Sandbox
+    await testStep('DELETE /admin/sandbox/clean (Limpeza Blindada de Testes)', async () => {
+      const res = await fetch(`${API_BASE}/admin/sandbox/clean`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 200 || typeof data.count !== 'number') throw new Error(`Status ${res.status}`);
+    });
+
     console.log(`\n🏁 Resultado Final dos Testes E2E: ${passCount} SUCESSOS, ${failCount} FALHAS.\n`);
+    if (failCount > 0) {
+      throw new Error(`A suíte finalizou com ${failCount} falhas.`);
+    }
   } finally {
     await app.close();
+    await prisma.$disconnect();
   }
 }
 
-runIntegrationSuite().catch((e) => console.error('Erro fatal nos testes:', e));
+runIntegrationSuite().catch((e) => {
+  console.error('Erro fatal nos testes:', e);
+  process.exit(1);
+});

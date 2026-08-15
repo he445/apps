@@ -16,15 +16,21 @@ interface AuthContextType {
   logout: () => void;
   updateProfile: (data: any) => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
+  impersonateUser: (token: string, user: User) => void;
+  exitImpersonation: () => void;
   isAuthenticated: boolean;
   isProfessional: boolean;
   isPatient: boolean;
+  isAdmin: boolean;
+  isImpersonated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEYS = {
   token: 'ojanuan_token',
   user: 'ojanuan_user',
+  adminToken: 'ojanuan_admin_token',
+  adminUser: 'ojanuan_admin_user',
 };
 
 const readStoredSession = () => {
@@ -110,9 +116,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     writeStoredSession(null, null);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(STORAGE_KEYS.adminToken);
+      window.sessionStorage.removeItem(STORAGE_KEYS.adminUser);
+    }
     setToken(null);
     setUser(null);
-    // Force redirect to login page
     if (typeof window !== 'undefined') {
       window.location.assign('/login');
     }
@@ -122,10 +131,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await api.put('/users/profile', data);
       const updatedUser = response.data.user;
-      const currentToken = token;
+      const currentToken = response.data.token || token;
       if (currentToken) {
         writeStoredSession(currentToken, updatedUser);
       }
+      setToken(currentToken);
       setUser(updatedUser);
     } catch (error) {
       throw error;
@@ -135,7 +145,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteAccount = async (password: string) => {
     try {
       await api.delete('/users/me', { data: { password } });
-      // On deletion, clear storage and log out
       writeStoredSession(null, null);
       setToken(null);
       setUser(null);
@@ -147,9 +156,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const impersonateUser = (targetToken: string, targetUser: User) => {
+    if (typeof window !== 'undefined') {
+      // Save original admin session if not already saved
+      if (!window.sessionStorage.getItem(STORAGE_KEYS.adminToken) && token && user) {
+        window.sessionStorage.setItem(STORAGE_KEYS.adminToken, token);
+        window.sessionStorage.setItem(STORAGE_KEYS.adminUser, JSON.stringify(user));
+      }
+    }
+
+    const simUser: User = { ...targetUser, isImpersonated: true };
+    writeStoredSession(targetToken, simUser);
+    setToken(targetToken);
+    setUser(simUser);
+
+    if (typeof window !== 'undefined') {
+      if (targetUser.role === 'PROFESSIONAL') {
+        window.location.assign('/pro/dashboard');
+      } else {
+        window.location.assign('/paciente/dashboard');
+      }
+    }
+  };
+
+  const exitImpersonation = () => {
+    if (typeof window === 'undefined') return;
+
+    const savedAdminToken = window.sessionStorage.getItem(STORAGE_KEYS.adminToken);
+    const savedAdminUser = window.sessionStorage.getItem(STORAGE_KEYS.adminUser);
+
+    if (savedAdminToken && savedAdminUser) {
+      const parsedAdmin = JSON.parse(savedAdminUser) as User;
+      writeStoredSession(savedAdminToken, parsedAdmin);
+      window.sessionStorage.removeItem(STORAGE_KEYS.adminToken);
+      window.sessionStorage.removeItem(STORAGE_KEYS.adminUser);
+      setToken(savedAdminToken);
+      setUser(parsedAdmin);
+      window.location.assign('/admin/dashboard');
+    } else {
+      logout();
+    }
+  };
+
   const isAuthenticated = !!token;
   const isProfessional = user?.role === 'PROFESSIONAL';
   const isPatient = user?.role === 'PATIENT';
+  const isAdmin = user?.role === 'ADMIN';
+  const isImpersonated = !!user?.isImpersonated || (typeof window !== 'undefined' && !!window.sessionStorage.getItem(STORAGE_KEYS.adminToken));
 
   return (
     <AuthContext.Provider
@@ -162,9 +215,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateProfile,
         deleteAccount,
+        impersonateUser,
+        exitImpersonation,
         isAuthenticated,
         isProfessional,
         isPatient,
+        isAdmin,
+        isImpersonated,
       }}
     >
       {children}

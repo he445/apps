@@ -6,34 +6,35 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const webOrigins = process.env.WEB_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
   const requestedPort = Number(process.env.PORT ?? 3000);
   const isProd = process.env.NODE_ENV === 'production';
 
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.getHttpAdapter().getInstance().set('trust proxy', isProd ? 1 : false);
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'no-referrer' },
+    hsts: isProd ? { maxAge: 15552000, includeSubDomains: true } : false,
+  }));
   app.setGlobalPrefix('api/v1');
 
-  // Configuração segura de CORS com suporte explícito a Vercel e WEB_ORIGIN
+  // Origens explícitas: esta API usa Authorization Bearer, portanto não precisa
+  // aceitar origens arbitrárias nem credenciais de cookies entre sites.
   const envOrigins = process.env.WEB_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
-  const defaultOrigins = [
-    'https://ojanuan.vercel.app',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-  ];
+  const defaultOrigins = isProd
+    ? ['https://ojanuan.vercel.app']
+    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
   const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Permite requisições sem header de origem (curl, server-to-server, mobile apps)
+      // Clientes não-browser (health checks, server-to-server) não enviam Origin.
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || !isProd) {
+      if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      return callback(null, true);
+      return callback(new Error('Origem não permitida pela política de CORS.'));
     },
-    credentials: true,
+    credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   });

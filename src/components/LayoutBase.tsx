@@ -8,6 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Logo } from './Logo';
+import { GhostBar } from './GhostBar';
 import { 
   Users, 
   DollarSign, 
@@ -18,7 +19,8 @@ import {
   MessageSquare, 
   ShieldCheck,
   Stethoscope,
-  Calendar
+  Calendar,
+  Sliders
 } from 'lucide-react';
 
 interface LayoutBaseProps {
@@ -26,14 +28,14 @@ interface LayoutBaseProps {
 }
 
 export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
-  const { user, logout, isProfessional, isPatient } = useAuth();
+  const { user, logout, isProfessional, isPatient, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
-  // Poll for unread messages
+  // Poll for unread messages (disabled for admin)
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAdmin) return;
     const checkUnread = async () => {
       try {
         const res = await api.get('/chat/messages/unread');
@@ -45,7 +47,7 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
     checkUnread();
     const interval = setInterval(checkUnread, 12000);
     return () => clearInterval(interval);
-  }, [user, location.pathname]);
+  }, [user, isAdmin, location.pathname]);
 
   // Public views (login, register, invite previews)
   if (!user) {
@@ -53,6 +55,11 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
   }
 
   // Navigation Items per Role
+  const adminNavigation = [
+    { name: 'Admin Hub', path: '/admin/dashboard', icon: Sliders, hasBadge: false },
+    { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
+  ];
+
   const proNavigation = [
     { name: 'Pacientes', path: '/pro/dashboard', icon: Users, hasBadge: false },
     { name: 'Agenda', path: '/pro/agenda', icon: Calendar, hasBadge: false },
@@ -69,36 +76,56 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
     { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
   ];
 
-  const currentNav = isProfessional ? proNavigation : patientNavigation;
+  const currentNav = isAdmin ? adminNavigation : isProfessional ? proNavigation : patientNavigation;
 
   const handleTabClick = (path: string) => {
     navigate(path);
   };
 
+  const getRoleBadge = () => {
+    if (isAdmin) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 text-amber-400 border border-slate-700 w-fit mt-1">
+          <Sliders className="h-3.5 w-3.5" />
+          <span className="text-[11px] font-bold uppercase tracking-wider">Administrador</span>
+        </div>
+      );
+    }
+    if (isProfessional) {
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F9F8F4] border border-[#7A8B76]/15 w-fit mt-1">
+          <Stethoscope className="h-3.5 w-3.5 text-[#C16E59]" />
+          <span className="text-[11px] font-bold text-[#C16E59] uppercase tracking-wider">Psicólogo(a)</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F9F8F4] border border-[#7A8B76]/15 w-fit mt-1">
+        <ShieldCheck className="h-3.5 w-3.5 text-[#7A8B76]" />
+        <span className="text-[11px] font-bold text-[#7A8B76] uppercase tracking-wider">Paciente</span>
+      </div>
+    );
+  };
+
+  const getHomeRoute = () => {
+    if (isAdmin) return '/admin/dashboard';
+    if (isProfessional) return '/pro/dashboard';
+    return '/paciente/dashboard';
+  };
+
   return (
     <div className="min-h-screen bg-[#F9F8F4] flex flex-col antialiased">
+      <GhostBar />
       <div className="flex flex-1 relative min-h-0">
         
-        {/* --- DESKTOP SIDEBAR (FOR BOTH ROLES ON SCREENS >= 768px) --- */}
+        {/* --- DESKTOP SIDEBAR (FOR ALL ROLES ON SCREENS >= 768px) --- */}
         <aside className="hidden md:flex flex-col w-64 bg-white border-r border-[#7A8B76]/15 shrink-0 sticky top-0 h-screen p-6 justify-between shadow-2xs z-30">
           <div className="flex flex-col gap-6">
             
             {/* Logo & Role Badge */}
             <div className="flex flex-col gap-2">
-              <Logo size="md" onClick={() => navigate(isProfessional ? '/pro/dashboard' : '/paciente/dashboard')} className="cursor-pointer" />
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F9F8F4] border border-[#7A8B76]/15 w-fit mt-1">
-                {isProfessional ? (
-                  <>
-                    <Stethoscope className="h-3.5 w-3.5 text-[#C16E59]" />
-                    <span className="text-[11px] font-bold text-[#C16E59] uppercase tracking-wider">Psicólogo(a)</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="h-3.5 w-3.5 text-[#7A8B76]" />
-                    <span className="text-[11px] font-bold text-[#7A8B76] uppercase tracking-wider">Paciente</span>
-                  </>
-                )}
-              </div>
+              <Logo size="md" onClick={() => navigate(getHomeRoute())} className="cursor-pointer" />
+              {getRoleBadge()}
             </div>
 
             {/* Navigation Menu */}
@@ -116,9 +143,11 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
                     onClick={() => handleTabClick(tab.path)}
                     className={`flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 text-left active-press cursor-pointer ${
                       isActive 
-                        ? isProfessional
-                          ? 'bg-[#C16E59]/10 text-[#C16E59] font-bold shadow-2xs'
-                          : 'bg-[#7A8B76]/10 text-[#7A8B76] font-bold shadow-2xs'
+                        ? isAdmin
+                          ? 'bg-slate-900 text-amber-400 font-bold shadow-2xs'
+                          : isProfessional
+                            ? 'bg-[#C16E59]/10 text-[#C16E59] font-bold shadow-2xs'
+                            : 'bg-[#7A8B76]/10 text-[#7A8B76] font-bold shadow-2xs'
                         : 'text-[#6D736E] hover:bg-[#F9F8F4] hover:text-[#2C332D]'
                     }`}
                   >
@@ -153,18 +182,22 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
           </div>
         </aside>
 
-        {/* --- MOBILE TOP HEADER (< 768px FOR BOTH ROLES) --- */}
+        {/* --- MOBILE TOP HEADER (< 768px) --- */}
         <div className="flex flex-col flex-1 min-w-0">
           
           <header className="md:hidden glass-header border-b border-[#7A8B76]/15 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <div className="flex items-center gap-2">
-              <Logo size="sm" onClick={() => navigate(isProfessional ? '/pro/dashboard' : '/paciente/dashboard')} className="cursor-pointer" />
+              <Logo size="sm" onClick={() => navigate(getHomeRoute())} className="cursor-pointer" />
               <span 
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  isProfessional ? 'bg-[#C16E59]/10 text-[#C16E59]' : 'bg-[#7A8B76]/10 text-[#7A8B76]'
+                  isAdmin 
+                    ? 'bg-slate-900 text-amber-400' 
+                    : isProfessional 
+                      ? 'bg-[#C16E59]/10 text-[#C16E59]' 
+                      : 'bg-[#7A8B76]/10 text-[#7A8B76]'
                 }`}
               >
-                {isProfessional ? 'Psicólogo' : 'Paciente'}
+                {isAdmin ? 'Admin' : isProfessional ? 'Psicólogo' : 'Paciente'}
               </span>
             </div>
 
@@ -191,7 +224,7 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
 
         </div>
 
-        {/* --- ERGONOMIC MOBILE BOTTOM NAVIGATION BAR (< 768px FOR BOTH ROLES) --- */}
+        {/* --- ERGONOMIC MOBILE BOTTOM NAVIGATION BAR (< 768px) --- */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-nav border-t border-[#7A8B76]/15 h-16 flex items-center justify-around px-2 z-40 shadow-lg">
           {currentNav.map((tab) => {
             const Icon = tab.icon;
@@ -206,13 +239,17 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
                 onClick={() => handleTabClick(tab.path)}
                 className={`flex flex-col items-center justify-center flex-1 h-full gap-0.5 px-1 transition-all text-[11px] font-semibold min-h-[44px] cursor-pointer active-press relative ${
                   isActive 
-                    ? isProfessional 
-                      ? 'text-[#C16E59] font-bold scale-105' 
-                      : 'text-[#7A8B76] font-bold scale-105'
+                    ? isAdmin
+                      ? 'text-slate-900 font-bold scale-105'
+                      : isProfessional 
+                        ? 'text-[#C16E59] font-bold scale-105' 
+                        : 'text-[#7A8B76] font-bold scale-105'
                     : 'text-[#6D736E] hover:text-[#2C332D]'
                 }`}
               >
-                <div className={`p-1 rounded-full relative ${isActive ? (isProfessional ? 'bg-[#C16E59]/10' : 'bg-[#7A8B76]/10') : ''}`}>
+                <div className={`p-1 rounded-full relative ${
+                  isActive ? (isAdmin ? 'bg-amber-100' : isProfessional ? 'bg-[#C16E59]/10' : 'bg-[#7A8B76]/10') : ''
+                }`}>
                   <Icon className={`h-5 w-5 ${isActive ? 'stroke-[2.4px]' : 'stroke-[1.8px]'}`} />
                   {showBadge && (
                     <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#B54B3C] border-2 border-white rounded-full animate-pulse shadow-xs" />

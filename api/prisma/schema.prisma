@@ -10,6 +10,7 @@ generator client {
 enum Role {
   PATIENT
   PROFESSIONAL
+  ADMIN
 }
 
 enum InvitationStatus {
@@ -37,17 +38,19 @@ enum PaymentStatus {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  role      Role
-  fullName  String
-  email     String   @unique
-  password  String
-  cpf       String?
-  crp       String?
-  address   String?
-  isDeleted Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  role       Role
+  fullName   String
+  email      String   @unique
+  password   String
+  cpf        String?
+  crp        String?
+  address    String?
+  isTestUser Boolean  @default(false)
+  isDeleted  Boolean  @default(false)
+  tokenVersion Int    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   settings             ProfessionalSettings?
   invitations          PatientInvitation[]
@@ -75,7 +78,7 @@ model PatientInvitation {
   id             String           @id @default(uuid())
   professionalId String
   professional   User             @relation(fields: [professionalId], references: [id], onDelete: Cascade)
-  token          String           @unique @db.VarChar(6)
+  token          String           @unique @db.VarChar(64)
   patientName    String
   status         InvitationStatus @default(PENDING)
   expiresAt      DateTime
@@ -146,4 +149,16 @@ model ChatMessage {
   createdAt   DateTime @default(now())
 
   @@index([senderId, receiverId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  targetId  String?
+  action    String   @db.VarChar(100)
+  details   String?  @db.Text
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
 }

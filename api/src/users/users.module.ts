@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Injectable, Module, Put, UnauthorizedException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Injectable, Module, Put, UnauthorizedException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser } from '../common/auth';
 import { PrismaService } from '../common/prisma.service';
@@ -29,9 +30,15 @@ class UpdateProfileDto {
 
 @Injectable()
 class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+  ) {}
 
   async eraseActiveData(user: JwtUser, passwordCheck: string) {
+    if (user.isImpersonated) {
+      throw new ForbiddenException('Ações destrutivas (exclusão de conta) são bloqueadas no modo simulação.');
+    }
     if (!passwordCheck) throw new BadRequestException('Informe sua senha para confirmar a exclusão da conta.');
     const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub } });
     if (!dbUser) throw new NotFoundException('Usuário não encontrado.');
@@ -68,8 +75,13 @@ class UsersService {
     const newEmail = dto.email ? dto.email.toLowerCase() : undefined;
     const isChangingEmail = newEmail && newEmail !== dbUser.email;
     const isChangingPassword = !!dto.newPassword;
+    const credentialsChanged = Boolean(isChangingEmail || isChangingPassword);
 
-    if (isChangingEmail || isChangingPassword) {
+    if ((isChangingEmail || isChangingPassword) && user.isImpersonated) {
+      throw new ForbiddenException('A alteração de credenciais (e-mail ou senha) é bloqueada no modo simulação.');
+    }
+
+    if (credentialsChanged) {
       if (!dto.currentPassword) {
         throw new BadRequestException('Informe sua senha atual para reautenticação e segurança.');
       }
@@ -94,6 +106,9 @@ class UsersService {
         ...(nameToUpdate && { fullName: nameToUpdate }),
         ...(newEmail && { email: newEmail }),
         ...(newPasswordHash && { password: newPasswordHash }),
+        // Tokens novos carregam esta versão; os antigos, emitidos antes da
+        // migração, continuam válidos até sua expiração normal de 8 horas.
+        ...(credentialsChanged && { tokenVersion: { increment: 1 } }),
         ...(dto.cpf !== undefined && { cpf: dto.cpf }),
         ...(dto.crp !== undefined && { crp: dto.crp }),
         ...(dto.address !== undefined && { address: dto.address }),
@@ -106,6 +121,7 @@ class UsersService {
         cpf: true,
         crp: true,
         address: true,
+        tokenVersion: true,
       },
     });
 
@@ -134,6 +150,15 @@ class UsersService {
       ? await this.prisma.professionalSettings.findUnique({ where: { professionalId: user.sub } })
       : null;
 
+    const refreshedToken = credentialsChanged
+      ? this.jwt.sign({
+          sub: updatedUser.id,
+          role: updatedUser.role,
+          email: updatedUser.email,
+          ver: updatedUser.tokenVersion,
+        })
+      : undefined;
+
     return {
       user: {
         ...updatedUser,
@@ -142,6 +167,7 @@ class UsersService {
         sessionPrice: settings ? Number(settings.sessionDefaultPrice) : undefined,
         cancelLimitHours: settings?.cancellationLimitHours,
       },
+      ...(refreshedToken && { token: refreshedToken, accessToken: refreshedToken }),
     };
   }
 }

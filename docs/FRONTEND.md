@@ -65,6 +65,7 @@ src/
 | `/convite/:token` | `OnboardingInvite` | Público | Onboarding por convite |
 | `/esqueci-minha-senha` | `ForgotPassword` | Público | Solicitação de recuperação de senha |
 | `/perfil` | `Perfil` | Autenticado | Configurações de perfil |
+| `/admin/dashboard` | `admin/Dashboard` | ADMIN | Painel Administrativo, métricas, telemetria de rotas, monitor de bugs e sandbox |
 | `/pro/dashboard` | `pro/Dashboard` | PROFESSIONAL | Painel do psicólogo |
 | `/pro/agenda` | `pro/Agenda` | PROFESSIONAL | Agenda completa e agendamentos por paciente |
 | `/pro/paciente/:id` | `PacienteDetail` | PROFESSIONAL | Detalhe de paciente e diário clínico |

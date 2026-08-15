@@ -9,6 +9,9 @@ dist/
 api/dist/
 build/
 api/tsconfig.tsbuildinfo
+api/prisma/*.js
+api/prisma/*.js.map
+api/prisma/*.d.ts
 
 # Environment & Secrets (NEVER COMMIT SENSITIVE KEYS)
 .env

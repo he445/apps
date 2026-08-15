@@ -1,4 +1,5 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, GoneException, HttpCode, HttpStatus, Injectable, Module, NotFoundException, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, GoneException, HttpCode, HttpStatus, Injectable, Module, NotFoundException, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { InvitationStatus, Role } from '@prisma/client';
@@ -35,11 +36,17 @@ class LoginDto {
 class AuthService {
   constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
-  private token(user: { id: string; role: Role; email: string }) {
-    return this.jwt.sign({ sub: user.id, role: user.role, email: user.email });
+  private token(user: { id: string; role: Role; email: string; tokenVersion: number }) {
+    return this.jwt.sign({ sub: user.id, role: user.role, email: user.email, ver: user.tokenVersion });
   }
 
   async register(dto: RegisterDto) {
+    // Contas administrativas são provisionadas exclusivamente por operação
+    // controlada (seed/CLI); aceitar este papel na rota pública é escalada de privilégio.
+    if (dto.role === Role.ADMIN) {
+      throw new ForbiddenException('Contas administrativas não podem ser criadas pelo cadastro público.');
+    }
+
     const inviteCode = dto.inviteToken || dto.token;
     const fullName = dto.fullName?.trim() || dto.name?.trim();
     if (!fullName) {
@@ -55,13 +62,28 @@ class AuthService {
 
       if (dto.role === Role.PATIENT && inviteCode) {
         const invitation = await tx.patientInvitation.findUnique({
-          where: { token: inviteCode.toUpperCase() },
+          where: { token: inviteCode },
         });
-        if (!invitation || invitation.expiresAt < new Date()) {
+        // Convites novos são de uso único. Os códigos curtos já emitidos
+        // permanecem aceitos até expirarem para não interromper onboarding em curso.
+        const isLegacyInvitation = invitation?.token.length === 6;
+        if (
+          !invitation ||
+          invitation.expiresAt < new Date() ||
+          (!isLegacyInvitation && invitation.status !== InvitationStatus.PENDING)
+        ) {
           throw new GoneException('Convite inválido ou expirado.');
         }
         professionalId = invitation.professionalId;
         invitationId = invitation.id;
+
+        if (!isLegacyInvitation) {
+          const claim = await tx.patientInvitation.updateMany({
+            where: { id: invitation.id, status: InvitationStatus.PENDING },
+            data: { status: InvitationStatus.ACCEPTED },
+          });
+          if (claim.count !== 1) throw new GoneException('Convite já foi utilizado.');
+        }
       }
 
       const user = await tx.user.create({
@@ -73,7 +95,7 @@ class AuthService {
           cpf: dto.cpf,
           crp: dto.crp,
         },
-        select: { id: true, fullName: true, email: true, role: true, cpf: true },
+        select: { id: true, fullName: true, email: true, role: true, cpf: true, tokenVersion: true },
       });
 
       if (professionalId) {
@@ -121,10 +143,14 @@ class AuthService {
 
   async previewInvitation(token: string) {
     const invitation = await this.prisma.patientInvitation.findUnique({
-      where: { token: token.toUpperCase() },
+      where: { token },
       include: { professional: { select: { fullName: true } } },
     });
-    if (!invitation || invitation.expiresAt < new Date()) {
+    if (
+      !invitation ||
+      invitation.expiresAt < new Date() ||
+      (invitation.token.length !== 6 && invitation.status !== InvitationStatus.PENDING)
+    ) {
       throw new GoneException('Convite expirado ou inválido.');
     }
     return {
@@ -142,6 +168,7 @@ class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   @ApiOperation({ summary: 'Cadastrar novo usuário', description: 'Registra um PROFESSIONAL ou PATIENT. Se paciente com inviteToken, vincula ao psicólogo automaticamente.' })
   @ApiBody({ type: RegisterDto })
@@ -153,6 +180,7 @@ class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login', description: 'Autentica o usuário e retorna o JWT. Use o accessToken no botão Authorize 🔒.' })

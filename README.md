@@ -93,6 +93,11 @@ JWT_SECRET="sua-chave-secreta-jwt"
 WEB_ORIGIN="http://localhost:5173"
 ```
 
+Em produção, configure `WEB_ORIGIN` com a origem exata do frontend e use um
+`JWT_SECRET` aleatório de ao menos 32 caracteres. O procedimento de deploy sem
+interromper sessões, a criação segura do primeiro administrador e a política de
+convites estão em [docs/SECURITY.md](docs/SECURITY.md).
+
 ### 3. Sincronizar Banco de Dados
 
 ```bash

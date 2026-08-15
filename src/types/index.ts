@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'PROFESSIONAL' | 'PATIENT';
+export type UserRole = 'PROFESSIONAL' | 'PATIENT' | 'ADMIN';
 
 export interface User {
   id: string;
@@ -11,7 +11,10 @@ export interface User {
   name: string;
   role: UserRole;
   isDeleted: boolean;
+  isTestUser?: boolean;
+  isImpersonated?: boolean;
   cpf?: string;
+  crp?: string;
   pixKey?: string;
   sessionPrice?: number;
   cancelLimitHours?: number;
@@ -61,3 +64,82 @@ export interface InviteInfo {
   psychologistId: string;
   psychologistName: string;
 }
+
+// --- ADMIN & TELEMETRY TYPES ---
+
+export interface RouteTelemetry {
+  method: string;
+  path: string;
+  hits: number;
+  totalDurationMs: number;
+  avgDurationMs: number;
+  minDurationMs: number;
+  maxDurationMs: number;
+  errorHits: number;
+  lastCalledAt: string;
+}
+
+export interface TelemetrySummary {
+  totalRequests: number;
+  avgLatencyMs: number;
+  totalErrors: number;
+  errorRatePercent: number;
+  activeRoutesCount: number;
+}
+
+export interface ErrorLogEntry {
+  id: string;
+  timestamp: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  message: string;
+  userId?: string;
+  userRole?: string;
+  ip?: string;
+}
+
+export interface ProNetworkItem {
+  id: string;
+  name: string;
+  email: string;
+  crp?: string;
+  isTestUser: boolean;
+  createdAt: string;
+  pixKey: string;
+  sessionPrice: number;
+  totalConsultations: number;
+  pendingInvitationsCount: number;
+  patientsCount: number;
+  patients: {
+    id: string;
+    name: string;
+    email: string;
+    isTestUser: boolean;
+    joinedAt: string;
+  }[];
+}
+
+export interface AdminOverviewData {
+  kpis: {
+    totalUsers: number;
+    totalPros: number;
+    totalPatients: number;
+    totalAdmins: number;
+    totalTestUsers: number;
+    avgPatientsPerPro: number;
+    consultations: {
+      scheduled: number;
+      completed: number;
+      cancelled: number;
+      totalRevenue: number;
+    };
+    engagement: {
+      totalAssessments: number;
+      totalMessages: number;
+    };
+  };
+  professionals: ProNetworkItem[];
+  telemetrySummary: TelemetrySummary;
+}
+

@@ -191,3 +191,13 @@ Pacientes acessam frequentemente no mobile. O Service Worker com Workbox garante
 
 ### Soft Delete Híbrido (LGPD)
 Ao excluir conta, o sistema **anonimiza** dados pessoais (nome → "Titular excluído", e-mail → `deleted-{id}@anonymized.invalid`, senha → vazia) mas **mantém** CPF e ID para auditoria fiscal do Carnê-Leão, conforme Lei 9.250/95.
+
+### Modo Simulação Seguro & Actor Token (RFC 8693)
+Para suporte e testes sem atrito no Beta, o sistema adota o padrão internacional **RFC 8693**:
+- O token JWT emitido carrega o `sub` do usuário simulado e o claim `act` com a identidade do Administrador.
+- **Guardrails**: Operações destrutivas (troca de senha, alteração de email e exclusão de conta) são bloqueadas na simulação.
+- **Isolamento Sandbox**: Personas de teste são sinalizadas com `isTestUser = true`, blindando usuários reais contra qualquer limpeza de dados.
+
+### Telemetria e Observabilidade em Tempo Real
+- `TelemetryInterceptor` global captura de forma não-bloqueante a latência de cada endpoint, contagem de acessos (hits) e exceções não tratadas 4xx/5xx para monitoramento proativo de bugs.
+

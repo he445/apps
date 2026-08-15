@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Button, Card, Input, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ interface Orientation {
 }
 
 export default function DashboardPaciente() {
+  const navigate = useNavigate();
   const [orientations, setOrientations] = useState<Orientation[]>([]);
   const [hasEvaluatedToday, setHasEvaluatedToday] = useState(false);
   const [psychologistName, setPsychologistName] = useState('');

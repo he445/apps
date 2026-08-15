@@ -16,6 +16,9 @@ import ForgotPassword from './pages/ForgotPassword';
 import OnboardingInvite from './pages/OnboardingInvite';
 import Perfil from './pages/Perfil';
 
+// Admin Pages
+import AdminDashboard from './pages/admin/Dashboard';
+
 // Pro Pages
 import DashboardPro from './pages/pro/Dashboard';
 import PacienteDetail from './pages/pro/PacienteDetail';
@@ -48,7 +51,7 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 // Unauthenticated (Public) Routes Guard
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isProfessional, loading } = useAuth();
+  const { isAuthenticated, isProfessional, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
@@ -59,6 +62,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   if (isAuthenticated) {
+    if (isAdmin) return <Navigate to="/admin/dashboard" replace />;
     return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/paciente/dashboard" replace />;
   }
 
@@ -66,10 +70,10 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 // Role Authorization Guard
-const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: 'PROFESSIONAL' | 'PATIENT' }> = ({
-  children,
-  allowedRole,
-}) => {
+const RoleGuard: React.FC<{
+  children: React.ReactNode;
+  allowedRole: 'PROFESSIONAL' | 'PATIENT' | 'ADMIN' | ('PROFESSIONAL' | 'PATIENT' | 'ADMIN')[];
+}> = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -80,7 +84,8 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: 'PROFESSIONA
     );
   }
 
-  if (!user || user.role !== allowedRole) {
+  const allowedRoles = Array.isArray(allowedRole) ? allowedRole : [allowedRole];
+  if (!user || !allowedRoles.includes(user.role as any)) {
     return <Navigate to="/" replace />;
   }
 
@@ -89,7 +94,7 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: 'PROFESSIONA
 
 // Redirect root to correct dashboard or login
 const RootRedirect: React.FC = () => {
-  const { isAuthenticated, isProfessional, loading } = useAuth();
+  const { isAuthenticated, isProfessional, isAdmin, loading } = useAuth();
 
   if (loading) {
     return (
@@ -100,6 +105,7 @@ const RootRedirect: React.FC = () => {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin/dashboard" replace />;
   return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/paciente/dashboard" replace />;
 };
 
@@ -118,6 +124,18 @@ export default function App() {
             {/* PRIVATE / COMMON ROUTES */}
             <Route path="/perfil" element={<PrivateRoute><Perfil /></PrivateRoute>} />
             <Route path="/paciente/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
+
+            {/* ADMIN SECURED ROUTES */}
+            <Route
+              path="/admin/dashboard"
+              element={
+                <PrivateRoute>
+                  <RoleGuard allowedRole="ADMIN">
+                    <AdminDashboard />
+                  </RoleGuard>
+                </PrivateRoute>
+              }
+            />
 
             {/* PROFESSIONAL SECURED ROUTES */}
             <Route

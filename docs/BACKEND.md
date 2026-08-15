@@ -258,6 +258,19 @@ Resultado: anonimização de dados pessoais conforme LGPD. CPF e ID são preserv
 
 ---
 
+### 🛡️ Admin & Observabilidade (exclusivo para `Role.ADMIN`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/admin/overview` | Resumo de KPIs de usuários, consultas, financeiro e lista de psicólogos com pacientes vinculados |
+| `GET` | `/admin/telemetry/routes` | Estatísticas agregadas de rotas (hits, latência média em ms, min/max e taxa de erro) |
+| `GET` | `/admin/telemetry/errors` | Feed em tempo real dos últimos 100 erros 4xx/5xx da aplicação |
+| `POST` | `/admin/impersonate/:userId` | Emite Actor Token seguro (RFC 8693) para testar conta em modo simulação com auditoria |
+| `POST` | `/admin/sandbox/seed` | Cria 1 psicólogo de teste + 2 pacientes demo + consultas e avaliações com `isTestUser: true` |
+| `DELETE` | `/admin/sandbox/clean` | Remove com total segurança todas as contas e dados com `isTestUser: true` |
+
+---
+
 ### 🌐 Health (público)
 
 | Método | Rota | Descrição |

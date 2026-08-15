@@ -46,6 +46,10 @@ class MessageDto {
   @IsOptional() @IsString() @MaxLength(1000) text?: string;
 }
 
+class InviteTokenDto {
+  @IsString() @MinLength(6) @MaxLength(64) token!: string;
+}
+
 @Injectable()
 class AccessService {
   constructor(private readonly prisma: PrismaService) {}
@@ -109,7 +113,10 @@ class DashboardService {
 
   async createInvitation(user: JwtUser) {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas profissionais podem gerar convites.');
-    const token = await this.createInviteToken(user.sub);
+    // A ação explícita de gerar convite sempre cria um novo link seguro. O
+    // convite anterior continua válido durante a transição para não quebrar
+    // links já enviados a pacientes.
+    const token = await this.createInviteToken(user.sub, true);
     return {
       inviteCode: token,
       code: token,
@@ -171,7 +178,7 @@ class DashboardService {
   async connectPatientToInvitation(user: JwtUser, token: string) {
     if (user.role !== Role.PATIENT) throw new ForbiddenException('Apenas pacientes podem aceitar convites.');
 
-    const normalizedToken = token?.trim().toUpperCase();
+    const normalizedToken = token?.trim();
     if (!normalizedToken) throw new BadRequestException('Informe o código do convite.');
 
     return this.prisma.$transaction(async (tx) => {
@@ -180,8 +187,21 @@ class DashboardService {
         include: { professional: { select: { id: true, fullName: true } } },
       });
 
-      if (!invitation || invitation.expiresAt < new Date()) {
+      const isLegacyInvitation = invitation?.token.length === 6;
+      if (
+        !invitation ||
+        invitation.expiresAt < new Date() ||
+        (!isLegacyInvitation && invitation.status !== InvitationStatus.PENDING)
+      ) {
         throw new NotFoundException('Convite inválido ou expirado.');
+      }
+
+      if (!isLegacyInvitation) {
+        const claim = await tx.patientInvitation.updateMany({
+          where: { id: invitation.id, status: InvitationStatus.PENDING },
+          data: { status: InvitationStatus.ACCEPTED },
+        });
+        if (claim.count !== 1) throw new NotFoundException('Convite já foi utilizado.');
       }
 
       await tx.professionalPatient.deleteMany({ where: { patientId: user.sub } });
@@ -197,20 +217,20 @@ class DashboardService {
     });
   }
 
-  private async createInviteToken(professionalId: string) {
+  private async createInviteToken(professionalId: string, forceNew = false) {
     const existing = await this.prisma.patientInvitation.findFirst({
-      where: { professionalId },
+      where: { professionalId, status: InvitationStatus.PENDING, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'asc' },
     });
-    if (existing) return existing.token;
+    if (existing && !forceNew) return existing.token;
 
-    const token = randomBytes(5).toString('base64url').toUpperCase().slice(0, 6);
+    const token = randomBytes(32).toString('base64url');
     await this.prisma.patientInvitation.create({
       data: {
         professionalId,
         patientName: 'Paciente',
         token,
-        expiresAt: new Date(Date.now() + 100 * 365 * 86_400_000),
+        expiresAt: new Date(Date.now() + 7 * 86_400_000),
       },
     });
     return token;
@@ -520,7 +540,7 @@ class CareController {
   @Get('professional/patients') @ApiOperation({ summary: 'Listar pacientes vinculados e gerar convite' }) listProfessionalPatients(@CurrentUser() user: JwtUser) { return this.dashboard.listProfessionalPatients(user); }
   @Post('professional/invitations') @ApiOperation({ summary: 'Criar um novo convite para paciente' }) createInvitation(@CurrentUser() user: JwtUser) { return this.dashboard.createInvitation(user); }
   @Get('patient/dashboard') @ApiOperation({ summary: 'Buscar dados do dashboard do paciente' }) getPatientDashboard(@CurrentUser() user: JwtUser) { return this.dashboard.getPatientDashboard(user); }
-  @Post('patient/invitations/accept') @ApiOperation({ summary: 'Aceitar um convite e trocar de profissional' }) acceptInvite(@CurrentUser() user: JwtUser, @Body() body: { token: string }) { return this.dashboard.connectPatientToInvitation(user, body.token); }
+  @Post('patient/invitations/accept') @ApiOperation({ summary: 'Aceitar um convite e trocar de profissional' }) acceptInvite(@CurrentUser() user: JwtUser, @Body() body: InviteTokenDto) { return this.dashboard.connectPatientToInvitation(user, body.token); }
 }
 
 @ApiTags('consultations')
