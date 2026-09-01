@@ -1,0 +1,7 @@
+# A Vercel trata qualquer arquivo .ts/.js dentro de /api como uma Serverless
+# Function própria, independente do framework do frontend (Vite, neste caso).
+# Esta pasta é o backend NestJS completo, publicado separadamente no Render —
+# nunca foi pensada como função da Vercel. Sem esta exclusão, cada arquivo aqui
+# conta contra o limite de 12 funções do plano Hobby, e o deploy falha assim
+# que o backend cresce além disso.
+api/
