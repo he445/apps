@@ -28,9 +28,26 @@ interface SessionFinance {
   price: number;
 }
 
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+// A validação do backend recusa competência anterior a 2020.
+const ANOS = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i).reverse();
+
+interface CarneLeaoRow {
+  paciente: string;
+  cpf: string | null;
+  dates: string[];
+  total: number;
+}
+
 export default function FinanceiroPro() {
   const [sessions, setSessions] = useState<SessionFinance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const agora = new Date();
+  const [competencia, setCompetencia] = useState({ month: agora.getMonth() + 1, year: agora.getFullYear() });
 
   useEffect(() => {
     const fetchFinance = async () => {
@@ -69,40 +86,56 @@ export default function FinanceiroPro() {
 
   const totalSessionsCount = sessions.length;
 
-  const exportToCSV = () => {
-    if (sessions.length === 0) {
-      toast.error('Nenhum dado disponível para exportação.');
-      return;
+  /**
+   * O CSV anterior era montado a partir de TODAS as consultas: incluía pendentes e
+   * canceladas, usava a data da consulta e não agrupava por pagador. O Carnê-Leão é
+   * regime de caixa — apura pelo valor efetivamente recebido, na competência do
+   * recebimento, por pagador. O backend já implementa isso em GET /reports/export;
+   * a tela só não o chamava.
+   */
+  const exportToCSV = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get('/reports/export', {
+        params: { month: competencia.month, year: competencia.year },
+      });
+
+      const linhas: CarneLeaoRow[] = Array.isArray(data) ? data : [];
+      if (linhas.length === 0) {
+        toast.error('Nenhum recebimento registrado nesta competência.');
+        return;
+      }
+
+      const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const headers = ['Pagador', 'CPF', 'Datas dos atendimentos', 'Qtd. sessoes', 'Total recebido (R$)'];
+      const rows = linhas.map((r) => [
+        esc(r.paciente),
+        esc(r.cpf || 'Nao informado'),
+        esc(r.dates.map((d) => d.split('-').reverse().join('/')).join(' | ')),
+        String(r.dates.length),
+        r.total.toFixed(2).replace('.', ','),
+      ]);
+      const totalGeral = linhas.reduce((acc, r) => acc + r.total, 0);
+      rows.push(['"TOTAL"', '""', '""', '', totalGeral.toFixed(2).replace('.', ',')]);
+
+      // Separador ';' e BOM para o Excel em português abrir sem passo de importação.
+      const csv = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ojanuan_carne_leao_${competencia.year}-${String(competencia.month).padStart(2, '0')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Carnê-Leão de ${String(competencia.month).padStart(2, '0')}/${competencia.year} exportado.`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Não foi possível gerar o relatório.');
+    } finally {
+      setExporting(false);
     }
-
-    // Prepare CSV header and lines
-    // Enforcing semi-colon separator for Brazilian Excel compatibilities
-    const headers = ['ID da Consulta', 'Paciente', 'CPF do Paciente', 'Data', 'Horario', 'Status de Pagamento', 'Valor Cobrado (R$)'];
-    const rows = sessions.map((s) => [
-      s.id,
-      `"${s.patientName.replace(/"/g, '""')}"`,
-      `"${(s.patientCpf || 'Nao informado').replace(/"/g, '""')}"`,
-      s.date,
-      s.time,
-      s.status === 'PAID' ? 'PAGO' : s.status === 'PENDING' ? 'PENDENTE' : 'CANCELADO',
-      s.price.toString(),
-    ]);
-
-    const csvContent = 
-      'data:text/csv;charset=utf-8,\uFEFF' + 
-      [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    
-    const todayStr = new Date().toISOString().split('T')[0];
-    link.setAttribute('download', `ojanuan_carne_leao_${todayStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast.success('Relatório Carnê-Leão (CSV) exportado com sucesso!');
   };
 
   const getStatusColor = (status: string) => {
@@ -122,15 +155,49 @@ export default function FinanceiroPro() {
             Controle de honorários e emissão de dados para consolidação do Carnê-Leão.
           </p>
         </div>
-        <Button 
-          onClick={exportToCSV} 
-          variant="secondary" 
-          disabled={loading || sessions.length === 0}
-          className="flex items-center gap-2 shadow-sm"
-        >
-          <Download className="h-4 w-4" />
-          <span>Exportar Carnê-Leão (CSV)</span>
-        </Button>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex gap-2">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="competencia-mes" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
+                Mês
+              </label>
+              <select
+                id="competencia-mes"
+                value={competencia.month}
+                onChange={(e) => setCompetencia((c) => ({ ...c, month: Number(e.target.value) }))}
+                className="px-3 py-2.5 rounded-xl border border-[#7A8B76]/25 bg-white text-sm text-[#2C332D] focus:outline-none focus:ring-2 focus:ring-[#7A8B76]/30"
+              >
+                {MESES.map((nome, i) => (
+                  <option key={nome} value={i + 1}>{nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="competencia-ano" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
+                Ano
+              </label>
+              <select
+                id="competencia-ano"
+                value={competencia.year}
+                onChange={(e) => setCompetencia((c) => ({ ...c, year: Number(e.target.value) }))}
+                className="px-3 py-2.5 rounded-xl border border-[#7A8B76]/25 bg-white text-sm text-[#2C332D] focus:outline-none focus:ring-2 focus:ring-[#7A8B76]/30"
+              >
+                {ANOS.map((ano) => (
+                  <option key={ano} value={ano}>{ano}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <Button
+            onClick={exportToCSV}
+            variant="secondary"
+            isLoading={exporting}
+            className="flex items-center gap-2 shadow-sm"
+          >
+            <Download className="h-4 w-4" />
+            <span>Exportar Carnê-Leão</span>
+          </Button>
+        </div>
       </div>
 
       {/* Metrics Row */}

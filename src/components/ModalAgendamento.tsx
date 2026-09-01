@@ -25,6 +25,22 @@ interface ModalAgendamentoProps {
   } | null;
 }
 
+/**
+ * Formata um Date como ISO 8601 preservando o fuso local do navegador
+ * (ex: "2026-09-02T14:00:00-03:00"), em vez de converter para UTC como o
+ * toISOString() faria.
+ */
+const toIsoWithOffset = (value: Date): string => {
+  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  const offsetMin = -value.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? '+' : '-';
+  return (
+    `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}` +
+    `T${pad(value.getHours())}:${pad(value.getMinutes())}:00` +
+    `${sign}${pad(offsetMin / 60)}:${pad(offsetMin % 60)}`
+  );
+};
+
 const TIME_PRESETS = [
   '08:00', '09:00', '10:00', '11:00',
   '14:00', '15:00', '16:00', '17:00', '18:00',
@@ -112,10 +128,14 @@ export const ModalAgendamento: React.FC<ModalAgendamentoProps> = ({
       return;
     }
 
-    // Compose ISO Date String without 'Z' suffix to avoid UTC drift.
-    // The server interprets naive ISO strings as local time; using 'Z' would
-    // shift a 14:00 São Paulo time to 17:00 UTC stored in the DB.
-    const dateTimeStr = `${date}T${time}:00`;
+    // Envia o instante com o fuso do navegador explícito. Antes a string ia sem
+    // fuso ("2026-09-02T14:00:00") e o servidor, rodando em UTC, a lia como 14h UTC
+    // — três horas adiantado para quem marcou 14h em São Paulo. O backend agora
+    // recusa data sem fuso, então o offset é obrigatório.
+    const [hh, mm] = time.split(':').map(Number);
+    const [yyyy, mo, dd] = date.split('-').map(Number);
+    const localDateTime = new Date(yyyy, mo - 1, dd, hh, mm, 0, 0);
+    const dateTimeStr = toIsoWithOffset(localDateTime);
 
     setSaving(true);
     try {

@@ -1,12 +1,13 @@
 import { Controller, Get, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './common/env';
 import { PrismaModule } from './common/prisma.service';
 import { JwtAuthGuard, Public } from './common/auth';
 import { TelemetryInterceptor } from './common/telemetry.interceptor';
+import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 import { AuthModule } from './auth/auth.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { CareModule } from './care/care.module';
@@ -49,6 +50,7 @@ const jwtAudience = 'ojanuan-web';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_INTERCEPTOR, useClass: TelemetryInterceptor },
+    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
   ],
 })
 export class AppModule {}

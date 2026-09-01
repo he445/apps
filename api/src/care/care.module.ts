@@ -1,20 +1,42 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Injectable, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Injectable, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { BillingType, ConsultationStatus, InvitationStatus, PaymentStatus, Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, registerDecorator, ValidationOptions } from 'class-validator';
 import { CurrentUser, JwtUser } from '../common/auth';
+import { APP_TIMEZONE, dayRangeInAppTimezone, isIsoWithOffset } from '../common/time';
 import { PrismaService } from '../common/prisma.service';
+
+/**
+ * Exige ISO 8601 com fuso explícito. `@IsDateString()` aceitava "2026-09-02T14:00:00",
+ * que o servidor (em UTC) interpretava como 14h UTC — três horas adiantado para quem
+ * marcou 14h em São Paulo.
+ */
+function IsIsoDateTimeWithOffset(validationOptions?: ValidationOptions) {
+  return (object: object, propertyName: string) => {
+    registerDecorator({
+      name: 'isIsoDateTimeWithOffset',
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate: (value: unknown) => isIsoWithOffset(value),
+        defaultMessage: () =>
+          'Data e hora devem incluir o fuso horário (ex: 2026-09-02T14:00:00-03:00).',
+      },
+    });
+  };
+}
 
 class CreateConsultationDto {
   @IsString() patientId!: string;
-  @IsDateString() dateTime!: string;
+  @IsIsoDateTimeWithOffset() dateTime!: string;
   @IsString() @MinLength(1) @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'Valor de sessão inválido.' }) sessionPrice!: string;
   @IsEnum(BillingType) billingType!: BillingType;
 }
 
 class UpdateConsultationDto {
-  @IsOptional() @IsDateString() dateTime?: string;
+  @IsOptional() @IsIsoDateTimeWithOffset() dateTime?: string;
   @IsOptional() @IsString() @MinLength(1) @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'Valor de sessão inválido.' }) sessionPrice?: string;
   @IsOptional() @IsEnum(BillingType) billingType?: BillingType;
 }
@@ -49,6 +71,9 @@ class MessageDto {
 class InviteTokenDto {
   @IsString() @MinLength(6) @MaxLength(64) token!: string;
 }
+
+/** Duração padrão de sessão, usada para detectar sobreposição na agenda. */
+const DEFAULT_SESSION_MINUTES = 50;
 
 @Injectable()
 class AccessService {
@@ -134,10 +159,8 @@ class DashboardService {
       include: { professional: { select: { id: true, fullName: true, settings: { select: { pixKey: true } } } } },
     });
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    // Janela do dia no fuso do produto, não no do servidor (que roda em UTC).
+    const { start: todayStart, end: todayEnd } = dayRangeInAppTimezone();
 
     const todaysAssessment = await this.prisma.selfAssessment.findFirst({
       where: { patientId: user.sub, createdAt: { gte: todayStart, lte: todayEnd } },
@@ -237,8 +260,10 @@ class DashboardService {
   }
 
   private buildInviteLink(token: string) {
-    const baseUrl = process.env.WEB_ORIGIN?.trim() || 'http://localhost:5173';
-    return `${baseUrl.replace(/\/$/, '')}/convite/${token}`;
+    // WEB_ORIGIN é validada como URL única no arranque; origens extras de CORS
+    // ficam em CORS_ORIGINS e não interferem aqui.
+    const baseUrl = process.env.WEB_ORIGIN?.trim().replace(/\/$/, '') || 'http://localhost:5173';
+    return `${baseUrl}/convite/${token}`;
   }
 }
 
@@ -260,6 +285,13 @@ class ConsultationsService {
     await this.access.pair(user, dto.patientId);
     const patient = await this.prisma.user.findUnique({ where: { id: dto.patientId } });
     if (!patient || patient.isDeleted) throw new NotFoundException('Paciente não encontrado.');
+
+    const dateTime = new Date(dto.dateTime);
+    if (dateTime.getTime() <= Date.now()) {
+      throw new BadRequestException('Não é possível agendar uma consulta em data passada.');
+    }
+    await this.assertSlotIsFree(user.sub, dateTime);
+
     return this.prisma.consultation.create({
       data: {
         patientId: patient.id,
@@ -288,6 +320,14 @@ class ConsultationsService {
       throw new BadRequestException('Valor da sessão inválido.');
     }
 
+    if (dto.dateTime !== undefined) {
+      const newDateTime = new Date(dto.dateTime);
+      if (newDateTime.getTime() <= Date.now()) {
+        throw new BadRequestException('Não é possível remarcar uma consulta para data passada.');
+      }
+      await this.assertSlotIsFree(user.sub, newDateTime, id);
+    }
+
     return this.prisma.consultation.update({
       where: { id },
       data: {
@@ -301,6 +341,31 @@ class ConsultationsService {
       },
     });
   }
+  /**
+   * Impede dois pacientes no mesmo horário. A agenda não modelava duração de
+   * sessão, então a janela usa o padrão de 50 minutos até que a duração seja
+   * configurável por profissional.
+   */
+  private async assertSlotIsFree(professionalId: string, dateTime: Date, ignoreConsultationId?: string) {
+    const windowStart = new Date(dateTime.getTime() - DEFAULT_SESSION_MINUTES * 60_000);
+    const windowEnd = new Date(dateTime.getTime() + DEFAULT_SESSION_MINUTES * 60_000);
+    const conflict = await this.prisma.consultation.findFirst({
+      where: {
+        professionalId,
+        status: { notIn: [ConsultationStatus.CANCELLED, ConsultationStatus.PATIENT_NO_SHOW] },
+        dateTime: { gt: windowStart, lt: windowEnd },
+        ...(ignoreConsultationId ? { id: { not: ignoreConsultationId } } : {}),
+      },
+      select: { dateTime: true, patientNameForTax: true },
+    });
+    if (conflict) {
+      const quando = conflict.dateTime.toLocaleString('pt-BR', { timeZone: APP_TIMEZONE });
+      throw new ConflictException(
+        `Conflito de agenda: já existe consulta com ${conflict.patientNameForTax} em ${quando}.`,
+      );
+    }
+  }
+
   async cancel(user: JwtUser, id: string) {
     const consultation = await this.prisma.consultation.findUnique({
       where: { id },
@@ -342,10 +407,8 @@ class AssessmentsService {
     const socialInteraction = dto.socialInteraction ?? dto.interacao_social ?? true;
     const quickNote = dto.quickNote ?? dto.nota;
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    // Janela do dia no fuso do produto, não no do servidor (que roda em UTC).
+    const { start: todayStart, end: todayEnd } = dayRangeInAppTimezone();
 
     const existingToday = await this.prisma.selfAssessment.findFirst({
       where: { patientId: user.sub, createdAt: { gte: todayStart, lte: todayEnd } },

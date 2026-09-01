@@ -61,7 +61,10 @@ export const Input: React.FC<InputProps> = ({
   id,
   ...props
 }) => {
-  const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+  // Math.random() era reavaliado a cada render: o htmlFor do label e o id do input
+  // mudavam juntos a cada ciclo, quebrando a associação que leitores de tela usam.
+  const generatedId = React.useId();
+  const inputId = id || generatedId;
   return (
     <div className="flex flex-col gap-1.5 w-full">
       {label && (

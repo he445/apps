@@ -22,7 +22,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   // CORS por lista branca estrita. As origens de produção vêm exclusivamente de
-  // WEB_ORIGIN (separadas por vírgula); as de desenvolvimento só entram fora de
+  // WEB_ORIGIN (canônica) e CORS_ORIGINS (extras); as de desenvolvimento só entram fora de
   // produção. Não há coringa: um preview novo é adicionado ao WEB_ORIGIN, não
   // liberado por padrão de domínio — qualquer pessoa pode publicar em *.vercel.app.
   const devOrigins = [
@@ -31,7 +31,7 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ];
-  const allowedOrigins = new Set([...env.webOrigins, ...(env.isProd ? [] : devOrigins)]);
+  const allowedOrigins = new Set([...env.corsOrigins, ...(env.isProd ? [] : devOrigins)]);
 
   app.enableCors({
     origin: (origin, callback) => {

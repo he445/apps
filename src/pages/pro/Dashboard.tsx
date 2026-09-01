@@ -41,7 +41,7 @@ export default function DashboardPro() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Agenda List (mock data fetched or static since backend has sessions)
+  // Próximas consultas agendadas (as 5 mais próximas)
   const [sessions, setSessions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -54,10 +54,22 @@ export default function DashboardPro() {
         setInviteLink(code ? `${window.location.origin}/convite/${code}` : (patientsRes.data.inviteLink || ''));
 
         const financeRes = await api.get('/consultations');
-        // Filter future sessions for agenda (e.g., PENDING status or future dates)
-        const allSessions = financeRes.data;
-        const pendingSessions = allSessions.filter((s: any) => s.status === 'PENDING');
-        setSessions(pendingSessions);
+        // 'PENDING' pertence a paymentStatus; o enum de status é SCHEDULED |
+        // COMPLETED | PATIENT_NO_SHOW | CANCELLED. O filtro antigo nunca casava,
+        // então este card ficava permanentemente vazio.
+        const now = Date.now();
+        const upcoming = (financeRes.data || [])
+          .filter((s: any) => s.status === 'SCHEDULED' && new Date(s.dateTime).getTime() >= now)
+          .sort((a: any, b: any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime())
+          .slice(0, 5)
+          .map((s: any) => ({
+            id: s.id,
+            patientName: s.patient?.fullName || s.patientNameForTax || 'Paciente',
+            date: new Date(s.dateTime).toLocaleDateString('pt-BR'),
+            time: new Date(s.dateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            price: Number(s.sessionPrice || 0).toFixed(2),
+          }));
+        setSessions(upcoming);
       } catch (err: any) {
         console.error(err);
         toast.error('Erro ao buscar dados do dashboard.');

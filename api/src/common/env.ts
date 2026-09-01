@@ -12,7 +12,10 @@ export type AppEnv = {
   isProd: boolean;
   port: number;
   jwtSecret: string;
-  webOrigins: string[];
+  /** Origem canônica do frontend. Usada para montar links (convite, e-mails). */
+  webOrigin: string;
+  /** Origens autorizadas no CORS. Inclui a canônica mais quaisquer previews. */
+  corsOrigins: string[];
   sandboxEnabled: boolean;
 };
 
@@ -50,13 +53,22 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     errors.push(`JWT_SECRET precisa de ao menos ${MIN_JWT_SECRET_LENGTH} caracteres (recebido: ${jwtSecret.length}).`);
   }
 
-  const webOrigins = (source.WEB_ORIGIN ?? '')
+  // WEB_ORIGIN é a origem canônica e deve conter UMA única URL: ela também monta o
+  // link de convite, e uma lista separada por vírgula produziria um link quebrado.
+  // Origens extras (previews) vão em CORS_ORIGINS, que só afeta o CORS.
+  const webOrigin = (source.WEB_ORIGIN ?? '').trim().replace(/\/$/, '');
+  if (isProd && !webOrigin) {
+    errors.push('WEB_ORIGIN é obrigatória em produção (URL canônica do frontend).');
+  }
+  if (webOrigin.includes(',')) {
+    errors.push('WEB_ORIGIN aceita uma única URL. Use CORS_ORIGINS para autorizar origens adicionais.');
+  }
+
+  const extraCorsOrigins = (source.CORS_ORIGINS ?? '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
-  if (isProd && webOrigins.length === 0) {
-    errors.push('WEB_ORIGIN é obrigatória em produção e define as origens autorizadas do CORS.');
-  }
+  const corsOrigins = Array.from(new Set([webOrigin, ...extraCorsOrigins].filter(Boolean)));
 
   const port = Number(source.PORT ?? 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -72,5 +84,5 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     );
   }
 
-  return { nodeEnv, isProd, port, jwtSecret, webOrigins, sandboxEnabled };
+  return { nodeEnv, isProd, port, jwtSecret, webOrigin, corsOrigins, sandboxEnabled };
 }

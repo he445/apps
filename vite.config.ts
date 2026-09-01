@@ -50,6 +50,7 @@ export default defineConfig(async () => {
         manifest: {
           name: 'Ojanuan',
           short_name: 'Ojanuan',
+          lang: 'pt-BR',
           description: 'Web App de saúde mental para vínculo terapêutico e gestão operacional',
           theme_color: '#F9F8F4',
           background_color: '#F9F8F4',
@@ -64,6 +65,12 @@ export default defineConfig(async () => {
               src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png'
+            },
+            {
+              src: 'pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }

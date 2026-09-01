@@ -17,7 +17,8 @@ class UpdateProfileDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsString() currentPassword?: string;
-  @IsOptional() @IsString() @MinLength(6) newPassword?: string;
+  // Alinhado ao cadastro (8): antes era possível enfraquecer a própria senha após entrar.
+  @IsOptional() @IsString() @MinLength(8) newPassword?: string;
   @IsOptional() @IsString() cpf?: string;
   @IsOptional() @IsString() crp?: string;
   @IsOptional() @IsString() address?: string;
