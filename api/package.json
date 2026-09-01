@@ -10,7 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "test:e2e": "ts-node test/integration.spec.ts"
+    "test:e2e": "ts-node test/integration.spec.ts",
+    "backfill:encryption": "ts-node prisma/backfill-encryption.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

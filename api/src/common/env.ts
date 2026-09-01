@@ -7,6 +7,8 @@
  * o processo se algo obrigatório estiver ausente ou fraco.
  */
 
+import { buildKeyring } from './encryption.service';
+
 export type AppEnv = {
   nodeEnv: 'development' | 'test' | 'production';
   isProd: boolean;
@@ -17,6 +19,8 @@ export type AppEnv = {
   /** Origens autorizadas no CORS. Inclui a canônica mais quaisquer previews. */
   corsOrigins: string[];
   sandboxEnabled: boolean;
+  /** Versão da chave usada para gravar conteúdo clínico cifrado. */
+  encryptionKeyVersion: number;
 };
 
 const MIN_JWT_SECRET_LENGTH = 32;
@@ -77,6 +81,16 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
 
   const sandboxEnabled = source.ENABLE_SANDBOX_ADMIN === 'true';
 
+  // Conteúdo clínico é cifrado em nível de aplicação. Sem chave válida a API
+  // gravaria dado sensível em texto claro — falhar no arranque é preferível a
+  // degradar em silêncio. buildKeyring valida tamanho, formato e valores de exemplo.
+  let encryptionKeyVersion = 1;
+  try {
+    encryptionKeyVersion = buildKeyring(source).activeVersion;
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+
   if (errors.length > 0) {
     throw new Error(
       `Configuração de ambiente inválida:\n${errors.map((error) => `  - ${error}`).join('\n')}\n` +
@@ -84,5 +98,5 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     );
   }
 
-  return { nodeEnv, isProd, port, jwtSecret, webOrigin, corsOrigins, sandboxEnabled };
+  return { nodeEnv, isProd, port, jwtSecret, webOrigin, corsOrigins, sandboxEnabled, encryptionKeyVersion };
 }

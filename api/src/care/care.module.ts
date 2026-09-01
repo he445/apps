@@ -6,6 +6,7 @@ import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength
 import { CurrentUser, JwtUser } from '../common/auth';
 import { APP_TIMEZONE, dayRangeInAppTimezone, isIsoWithOffset } from '../common/time';
 import { PrismaService } from '../common/prisma.service';
+import { EncryptionService } from '../common/encryption.service';
 
 /**
  * Exige ISO 8601 com fuso explícito. `@IsDateString()` aceitava "2026-09-02T14:00:00",
@@ -90,7 +91,7 @@ class AccessService {
 
 @Injectable()
 class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly crypto: EncryptionService) {}
 
   async listProfessionalPatients(user: JwtUser) {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas profissionais podem acessar esta área.');
@@ -185,14 +186,14 @@ class DashboardService {
             nivel_energia: todaysAssessment.energyScore,
             nivel_ansiedade: todaysAssessment.anxietyScore,
             interacao_social: todaysAssessment.socialInteraction,
-            nota: todaysAssessment.quickNote || '',
+            nota: this.crypto.read(todaysAssessment.encryptedNote, todaysAssessment.noteKeyVersion, todaysAssessment.quickNote),
             indice_bem_estar: Number(((todaysAssessment.moodScore + todaysAssessment.sleepScore + todaysAssessment.energyScore + (6 - todaysAssessment.anxietyScore)) / 4).toFixed(2)),
           }
         : null,
       orientations: orientations.map((orientation) => ({
         id: orientation.id,
         title: 'Orientação recebida',
-        content: orientation.text,
+        content: this.crypto.read(orientation.encryptedText, orientation.textKeyVersion, orientation.text),
         date: orientation.createdAt.toISOString().slice(0, 10),
       })),
     };
@@ -396,7 +397,11 @@ class ConsultationsService {
 
 @Injectable()
 class AssessmentsService {
-  constructor(private readonly prisma: PrismaService, private readonly access: AccessService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: AccessService,
+    private readonly crypto: EncryptionService,
+  ) {}
   async create(user: JwtUser, dto: AssessmentDto) {
     if (user.role !== Role.PATIENT) throw new ForbiddenException('A autoavaliação pertence ao paciente.');
 
@@ -418,7 +423,12 @@ class AssessmentsService {
     const record = existingToday
       ? await this.prisma.selfAssessment.update({
           where: { id: existingToday.id },
-          data: { moodScore, anxietyScore, sleepScore, energyScore, socialInteraction, quickNote },
+          data: {
+            moodScore, anxietyScore, sleepScore, energyScore, socialInteraction,
+            quickNote,
+            encryptedNote: quickNote ? this.crypto.encrypt(quickNote) : null,
+            noteKeyVersion: quickNote ? this.crypto.activeVersion : null,
+          },
         })
       : await this.prisma.selfAssessment.create({
           data: {
@@ -429,6 +439,8 @@ class AssessmentsService {
             energyScore,
             socialInteraction,
             quickNote,
+            encryptedNote: quickNote ? this.crypto.encrypt(quickNote) : null,
+            noteKeyVersion: quickNote ? this.crypto.activeVersion : null,
           },
         });
 
@@ -441,7 +453,7 @@ class AssessmentsService {
       qualidade_sono: record.sleepScore,
       nivel_energia: record.energyScore,
       interacao_social: record.socialInteraction,
-      nota: record.quickNote,
+      nota: this.crypto.readOptional(record.encryptedNote, record.noteKeyVersion, record.quickNote),
       date: record.createdAt.toISOString().slice(0, 10),
       indice_bem_estar,
     };
@@ -461,7 +473,7 @@ class AssessmentsService {
       qualidade_sono: a.sleepScore,
       nivel_energia: a.energyScore,
       interacao_social: a.socialInteraction,
-      nota: a.quickNote,
+      nota: this.crypto.readOptional(a.encryptedNote, a.noteKeyVersion, a.quickNote),
       date: a.createdAt.toISOString().slice(0, 10),
       indice_bem_estar: Number(((a.moodScore + a.sleepScore + a.energyScore + (6 - a.anxietyScore)) / 4).toFixed(2)),
     }));
@@ -470,18 +482,46 @@ class AssessmentsService {
   async addGuideline(user: JwtUser, patientId: string, dto: GuidelineDto) {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException();
     await this.access.pair(user, patientId);
-    return this.prisma.guideline.create({ data: { professionalId: user.sub, patientId, text: dto.text } });
+    const created = await this.prisma.guideline.create({
+      data: {
+        professionalId: user.sub,
+        patientId,
+        text: dto.text,
+        encryptedText: this.crypto.encrypt(dto.text),
+        textKeyVersion: this.crypto.activeVersion,
+      },
+    });
+    return {
+      id: created.id,
+      patientId: created.patientId,
+      professionalId: created.professionalId,
+      text: dto.text,
+      createdAt: created.createdAt,
+    };
   }
 
   async guidelines(user: JwtUser, patientId: string) {
     if (user.sub !== patientId) await this.access.pair(user, patientId);
-    return this.prisma.guideline.findMany({ where: { patientId }, orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.guideline.findMany({ where: { patientId }, orderBy: { createdAt: 'desc' } });
+    // Devolve forma explícita: antes vazava a linha crua, o que passaria a expor
+    // o ciphertext ao cliente e quebraria quando `text` deixar de existir.
+    return rows.map((row) => ({
+      id: row.id,
+      patientId: row.patientId,
+      professionalId: row.professionalId,
+      text: this.crypto.read(row.encryptedText, row.textKeyVersion, row.text),
+      createdAt: row.createdAt,
+    }));
   }
 }
 
 @Injectable()
 class ChatService {
-  constructor(private readonly prisma: PrismaService, private readonly access: AccessService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: AccessService,
+    private readonly crypto: EncryptionService,
+  ) {}
 
   async send(user: JwtUser, dto: MessageDto) {
     const textContent = (dto.messageText || dto.text || '').trim();
@@ -492,7 +532,11 @@ class ChatService {
       data: {
         senderId: user.sub,
         receiverId: dto.receiverId,
+        // Escrita dupla durante a transição: o texto claro sai na Release B,
+        // depois que o backfill confirmar que tudo está cifrado.
         messageText: textContent,
+        encryptedText: this.crypto.encrypt(textContent),
+        textKeyVersion: this.crypto.activeVersion,
       },
     });
 
@@ -500,8 +544,8 @@ class ChatService {
       id: msg.id,
       senderId: msg.senderId,
       receiverId: msg.receiverId,
-      messageText: msg.messageText,
-      text: msg.messageText,
+      messageText: textContent,
+      text: textContent,
       isRead: msg.isRead,
       createdAt: msg.createdAt,
       timestamp: msg.createdAt.getTime(),
@@ -549,16 +593,19 @@ class ChatService {
       });
     }
 
-    return messages.map((m) => ({
+    return messages.map((m) => {
+      const body = this.crypto.read(m.encryptedText, m.textKeyVersion, m.messageText);
+      return {
       id: m.id,
       senderId: m.senderId,
       receiverId: m.receiverId,
-      messageText: m.messageText,
-      text: m.messageText,
+      messageText: body,
+      text: body,
       isRead: m.isRead,
       createdAt: m.createdAt,
       timestamp: m.createdAt.getTime(),
-    }));
+      };
+    });
   }
 
   async unreadCount(user: JwtUser) {

@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './common/env';
 import { PrismaModule } from './common/prisma.service';
+import { EncryptionModule } from './common/encryption.service';
 import { JwtAuthGuard, Public } from './common/auth';
 import { TelemetryInterceptor } from './common/telemetry.interceptor';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
@@ -26,6 +27,7 @@ const jwtAudience = 'ojanuan-web';
     // ficava indefinido fora de produção e o token era assinado com um segredo fixo.
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'], validate: validateEnv }),
     PrismaModule,
+    EncryptionModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 60,
