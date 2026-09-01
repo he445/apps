@@ -463,8 +463,13 @@ export class AdminService {
   }
 
   private assertSandboxEnabled() {
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SANDBOX_ADMIN !== 'true') {
-      throw new ForbiddenException('Sandbox administrativa desabilitada em produção.');
+    // Falha fechado: a sandbox exige liberação explícita. A checagem anterior só
+    // bloqueava quando NODE_ENV era exatamente "production", então a variável
+    // ausente no host liberava a criação de contas demo no banco real.
+    if (process.env.ENABLE_SANDBOX_ADMIN !== 'true') {
+      throw new ForbiddenException(
+        'Sandbox administrativa desabilitada. Defina ENABLE_SANDBOX_ADMIN=true para habilitá-la.',
+      );
     }
   }
 }

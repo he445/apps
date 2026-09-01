@@ -1,7 +1,9 @@
 import { Controller, Get, Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { validateEnv } from './common/env';
 import { PrismaModule } from './common/prisma.service';
 import { JwtAuthGuard, Public } from './common/auth';
 import { TelemetryInterceptor } from './common/telemetry.interceptor';
@@ -14,32 +16,27 @@ import { AdminModule } from './admin/admin.module';
 @Controller('health')
 class HealthController { @Public() @Get() health() { return { status: 'ok', service: 'ojanuan-api' }; } }
 
-const jwtSecret = process.env.JWT_SECRET?.trim();
-if (!jwtSecret && process.env.NODE_ENV === 'production') {
-  throw new Error('JWT_SECRET deve ser definido em produção.');
-}
-if (!jwtSecret) {
-  console.warn('JWT_SECRET não definido; usando fallback de desenvolvimento.');
-} else if (jwtSecret.length < 32) {
-  // Mantém compatibilidade com a chave já provisionada. A rotação para 32+ caracteres
-  // é obrigatória no próximo ciclo operacional e está documentada no checklist.
-  console.warn('JWT_SECRET tem menos de 32 caracteres; agende a rotação para uma chave mais longa.');
-}
-
 const jwtIssuer = 'ojanuan-api';
 const jwtAudience = 'ojanuan-web';
 
 @Module({
   imports: [
+    // Carrega api/.env e valida tudo no arranque. Sem isto, process.env.JWT_SECRET
+    // ficava indefinido fora de produção e o token era assinado com um segredo fixo.
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'], validate: validateEnv }),
     PrismaModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 60,
     }]),
-    JwtModule.register({
+    JwtModule.registerAsync({
       global: true,
-      secret: jwtSecret ?? 'development-only-secret',
-      signOptions: { expiresIn: '8h', issuer: jwtIssuer, audience: jwtAudience },
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        // validateEnv já garantiu presença, força e que não é um valor de exemplo público.
+        secret: config.getOrThrow<string>('jwtSecret'),
+        signOptions: { expiresIn: '8h', issuer: jwtIssuer, audience: jwtAudience },
+      }),
     }),
     AuthModule,
     InvitationsModule,

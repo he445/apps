@@ -3,11 +3,15 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { validateEnv } from './common/env';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const requestedPort = Number(process.env.PORT ?? 3000);
-  const isProd = process.env.NODE_ENV === 'production';
+  // O ConfigModule já carregou o .env durante a criação do app; validateEnv é puro
+  // e devolve os mesmos valores validados, agora tipados, para uso no bootstrap.
+  const env = validateEnv();
+  const requestedPort = env.port;
+  const isProd = env.isProd;
 
   app.getHttpAdapter().getInstance().set('trust proxy', isProd ? 1 : false);
   app.use(helmet({
@@ -17,28 +21,24 @@ async function bootstrap() {
   }));
   app.setGlobalPrefix('api/v1');
 
-  // Configuração segura e flexível de CORS com suporte a Vercel e WEB_ORIGIN
-  const envOrigins = process.env.WEB_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
-  const defaultOrigins = [
-    'https://ojanuan.vercel.app',
+  // CORS por lista branca estrita. As origens de produção vêm exclusivamente de
+  // WEB_ORIGIN (separadas por vírgula); as de desenvolvimento só entram fora de
+  // produção. Não há coringa: um preview novo é adicionado ao WEB_ORIGIN, não
+  // liberado por padrão de domínio — qualquer pessoa pode publicar em *.vercel.app.
+  const devOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ];
-  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+  const allowedOrigins = new Set([...env.webOrigins, ...(env.isProd ? [] : devOrigins)]);
 
   app.enableCors({
     origin: (origin, callback) => {
       // Clientes não-browser (health checks, server-to-server, mobile) não enviam Origin
       if (!origin) return callback(null, true);
 
-      // Permite origens explícitas, qualquer deploy/preview na Vercel (*.vercel.app) ou localhost em dev
-      const isVercelDomain = /^https:\/\/([a-zA-Z0-9-]+\.)*vercel\.app$/.test(origin);
-      if (allowedOrigins.includes(origin) || isVercelDomain || !isProd) {
-        return callback(null, true);
-      }
-      return callback(null, false);
+      return callback(null, allowedOrigins.has(origin.replace(/\/$/, '')));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

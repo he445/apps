@@ -38,7 +38,27 @@ export class TelemetryService {
   private static routeStats = new Map<string, RouteTelemetry>();
   private static recentErrors: ErrorLogEntry[] = [];
   private static readonly MAX_ERRORS = 100;
+  /**
+   * Teto de rotas distintas rastreadas. O projeto tem ~33 rotas; o excedente só
+   * aparece se a normalização deixar passar algo variável, e aí o Map não pode
+   * crescer sem limite dentro de um processo de vida longa.
+   */
+  private static readonly MAX_ROUTES = 200;
   private static totalRequests = 0;
+
+  /** Descarta a rota chamada há mais tempo para manter o Map dentro do teto. */
+  private static evictOldestRoute() {
+    let oldestKey: string | null = null;
+    let oldestAt = Infinity;
+    for (const [key, stat] of this.routeStats) {
+      const calledAt = stat.lastCalledAt.getTime();
+      if (calledAt < oldestAt) {
+        oldestAt = calledAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey !== null) this.routeStats.delete(oldestKey);
+  }
 
   static recordRequest(
     method: string,
@@ -57,6 +77,7 @@ export class TelemetryService {
 
     const existing = this.routeStats.get(key);
     if (!existing) {
+      if (this.routeStats.size >= this.MAX_ROUTES) this.evictOldestRoute();
       this.routeStats.set(key, {
         method: method.toUpperCase(),
         path: normalizedPath,
@@ -130,11 +151,22 @@ export class TelemetryService {
     };
   }
 
+  /**
+   * Reduz a URL a um template estável. Além de agrupar as estatísticas, isto é um
+   * controle de segurança: tokens de convite são segredos de uso único e não podem
+   * virar chave do Map — de onde vazariam para GET /admin/telemetry/routes.
+   *
+   * A última regra é a rede de proteção: qualquer segmento longo o bastante para ser
+   * identificador ou segredo (o token de convite tem 43 caracteres) é descartado,
+   * mesmo que não case com os formatos conhecidos. Nomes reais de rota no projeto
+   * têm no máximo 13 caracteres ("consultations"), bem abaixo do limite.
+   */
   private static normalizePath(path: string): string {
     return path
-      .replace(/\/[0-9a-fA-F-]{36}/g, '/:id')
-      .replace(/\/[0-9a-fA-F]{6}/g, '/:token')
-      .split('?')[0];
+      .split('?')[0]
+      .replace(/\/[0-9a-fA-F-]{36}(?=\/|$)/g, '/:id')
+      .replace(/\/[0-9a-fA-F]{6}(?=\/|$)/g, '/:token')
+      .replace(/\/[A-Za-z0-9_-]{16,}(?=\/|$)/g, '/:param');
   }
 }
 

@@ -7,6 +7,11 @@ import * as bcrypt from 'bcrypt';
 const PORT = 3000;
 const API_BASE = `http://127.0.0.1:${PORT}/api/v1`;
 
+// A suíte exercita os endpoints de sandbox, que agora exigem liberação explícita
+// (antes bastava NODE_ENV não ser "production"). Precisa ser definido antes de
+// importar/instanciar o AppModule, cuja validação de ambiente roda no arranque.
+process.env.ENABLE_SANDBOX_ADMIN = 'true';
+
 async function runIntegrationSuite() {
   console.log('🚀 Executando Suíte de Testes de Integração End-to-End Ojanuan...\n');
 
