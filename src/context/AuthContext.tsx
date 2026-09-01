@@ -186,7 +186,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedAdminUser = window.sessionStorage.getItem(STORAGE_KEYS.adminUser);
 
     if (savedAdminToken && savedAdminUser) {
-      const parsedAdmin = JSON.parse(savedAdminUser) as User;
+      // Sem esta proteção, um storage corrompido lançava aqui e deixava o admin
+      // preso na simulação sem saída — e ErrorBoundary não captura erro em
+      // handler de evento, só em render. Degradar para logout sempre dá uma saída.
+      let parsedAdmin: User;
+      try {
+        parsedAdmin = JSON.parse(savedAdminUser) as User;
+      } catch {
+        logout();
+        return;
+      }
       writeStoredSession(savedAdminToken, parsedAdmin);
       window.sessionStorage.removeItem(STORAGE_KEYS.adminToken);
       window.sessionStorage.removeItem(STORAGE_KEYS.adminUser);

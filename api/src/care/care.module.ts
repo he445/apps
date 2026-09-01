@@ -536,10 +536,18 @@ class ChatService {
       orderBy: { createdAt: 'asc' },
     });
 
-    await this.prisma.chatMessage.updateMany({
-      where: { senderId: partnerId, receiverId: user.sub, isRead: false },
-      data: { isRead: true },
-    });
+    // A marcação de leitura só faz sentido se o lote trouxe algo do parceiro ainda
+    // não lido. Antes esta escrita era incondicional: com o polling de 3 em 3
+    // segundos, eram ~20 UPDATEs por minuto por aba aberta mesmo sem mensagem
+    // nova, o que mantinha o banco permanentemente ativo e impedia a suspensão
+    // automática do Neon — o maior consumidor da cota gratuita.
+    const hasUnreadFromPartner = messages.some((m) => m.senderId === partnerId && !m.isRead);
+    if (hasUnreadFromPartner) {
+      await this.prisma.chatMessage.updateMany({
+        where: { senderId: partnerId, receiverId: user.sub, isRead: false },
+        data: { isRead: true },
+      });
+    }
 
     return messages.map((m) => ({
       id: m.id,

@@ -44,9 +44,20 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
         // Silent catch if server down or offline
       }
     };
-    checkUnread();
-    const interval = setInterval(checkUnread, 12000);
-    return () => clearInterval(interval);
+    // Aba oculta não consulta: antes o badge seguia batendo no banco a cada 12 s
+    // com a aba em segundo plano, impedindo a suspensão automática do Neon.
+    const isVisible = () => document.visibilityState === 'visible';
+    const tick = () => { if (isVisible()) checkUnread(); };
+
+    if (isVisible()) checkUnread();
+    const interval = setInterval(tick, 12000);
+    const onVisibility = () => { if (isVisible()) checkUnread(); };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [user, isAdmin, location.pathname]);
 
   // Public views (login, register, invite previews)

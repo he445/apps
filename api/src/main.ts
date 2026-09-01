@@ -13,6 +13,11 @@ async function bootstrap() {
   const requestedPort = env.port;
   const isProd = env.isProd;
 
+  // O Render envia SIGTERM ao hibernar ou redeployar. Sem isto o Nest não escuta
+  // o sinal, o onModuleDestroy nunca roda e as conexões com o banco ficam
+  // penduradas até o timeout do Postgres — custo real no plano gratuito do Neon.
+  app.enableShutdownHooks();
+
   app.getHttpAdapter().getInstance().set('trust proxy', isProd ? 1 : false);
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -122,4 +127,19 @@ async function bootstrap() {
 
   throw new Error(`Não foi possível iniciar a API: nenhuma porta disponível entre ${candidatePorts[0]} e ${candidatePorts[candidatePorts.length - 1]}.`);
 }
-void bootstrap();
+// Sem estes handlers, uma rejeição não tratada encerrava o processo sem deixar
+// rastro no log do Render, transformando uma falha diagnosticável em reinício mudo.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[uncaughtException]', error.stack ?? error);
+  // Estado do processo é indefinido após uma exceção não capturada: sair deixa o
+  // Render reiniciar num estado limpo, em vez de seguir servindo de forma incerta.
+  process.exit(1);
+});
+
+bootstrap().catch((error) => {
+  console.error('[bootstrap] Falha ao iniciar a API:', error instanceof Error ? error.message : error);
+  process.exit(1);
+});

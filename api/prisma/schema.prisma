@@ -92,6 +92,8 @@ model ProfessionalPatient {
   patientId      String   @unique
   patient        User     @relation("PatientConnections", fields: [patientId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
+
+  @@index([professionalId])
 }
 
 model Consultation {
@@ -136,6 +138,8 @@ model Guideline {
   professional   User     @relation("ProfGuidelines", fields: [professionalId], references: [id], onDelete: Cascade)
   text           String   @db.VarChar(500)
   createdAt      DateTime @default(now())
+
+  @@index([patientId, createdAt])
 }
 
 model ChatMessage {
@@ -149,6 +153,10 @@ model ChatMessage {
   createdAt   DateTime @default(now())
 
   @@index([senderId, receiverId, createdAt])
+  // unreadCount() conta por (receiverId, isRead) a cada 12s. O índice acima
+  // lidera por senderId e não atende esse predicado: sem este, toda contagem
+  // varria a tabela que mais cresce no sistema.
+  @@index([receiverId, isRead])
 }
 
 model AuditLog {
