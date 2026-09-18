@@ -12,8 +12,10 @@ SPA React 19 com TypeScript, roteamento via React Router DOM 7, estilização em
 
 ## Estrutura de Pastas
 
+Publicado a partir de `web/` (irmã de `api/` na raiz do monorepo).
+
 ```
-src/
+web/src/
 ├── App.tsx                     # Roteamento principal + AuthContext
 ├── main.tsx                    # Ponto de entrada React (ReactDOM.createRoot)
 ├── index.css                   # Estilos globais, variáveis CSS, tokens de design

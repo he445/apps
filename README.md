@@ -24,11 +24,17 @@
 
 ## 🗂 Arquitetura do Projeto
 
+Monorepo com duas pastas irmãs e independentes — cada uma com seu próprio
+`package.json` e `node_modules`, publicadas separadamente (`api/` no Render,
+`web/` na Vercel). A raiz só orquestra as duas para desenvolvimento local e
+não tem código-fonte próprio.
+
 ```text
 apps/
-├── api/                        # Backend NestJS (REST API)
+├── api/                        # Backend NestJS (REST API) — publicado no Render
 │   ├── prisma/
-│   │   └── schema.prisma       # Modelos Prisma & PostgreSQL (Neon DB)
+│   │   ├── schema.prisma       # Modelos Prisma & PostgreSQL (Neon DB)
+│   │   └── migrations/         # Migrations versionadas
 │   ├── test/
 │   │   └── integration.spec.ts # Suíte oficial de testes E2E de integração
 │   ├── src/
@@ -36,23 +42,32 @@ apps/
 │   │   ├── care/               # Consultas, autoavaliações, chat, relatórios
 │   │   ├── invitations/        # Criação e aceite de convites
 │   │   ├── users/              # Perfil de usuário e exclusão de conta (LGPD)
-│   │   ├── common/             # Guards JWT, decoradores e Prisma Service
+│   │   ├── admin/               # Painel administrativo, telemetria e sandbox
+│   │   ├── common/             # Guards JWT, criptografia e Prisma Service
 │   │   └── main.ts             # Bootstrap da aplicação e Swagger UI
 │   ├── .env.example            # Modelo de variáveis de ambiente da API
 │   └── package.json
-├── src/                        # Frontend React 19 (Mobile-First + Desktop)
-│   ├── components/             # LayoutBase, UI Kit (Button, Card, Modal, Skeleton)
-│   ├── context/                # AuthContext (Estado de autenticação global)
-│   ├── hooks/                  # Custom Hooks (ex: useChatPolling)
-│   ├── pages/                  # Telas de Pacientes, Psicólogos e Autenticação
-│   ├── services/               # Axios API client
-│   └── types/                  # Tipos TypeScript globais
+├── web/                        # Frontend React 19 (Mobile-First + Desktop) — publicado na Vercel
+│   ├── src/
+│   │   ├── components/          # LayoutBase, UI Kit (Button, Card, Modal, Skeleton)
+│   │   ├── context/              # AuthContext (Estado de autenticação global)
+│   │   ├── hooks/                 # Custom Hooks (ex: useChatPolling)
+│   │   ├── pages/                  # Telas de Pacientes, Psicólogos e Autenticação
+│   │   ├── services/                # Axios API client
+│   │   └── types/                    # Tipos TypeScript globais
+│   ├── public/                  # Ícones do PWA
+│   ├── index.html
+│   ├── vite.config.ts           # Configuração do Vite + Proxy /api → NestJS (dev)
+│   ├── vercel.json               # Rewrite de SPA para a Vercel
+│   └── package.json
 ├── docs/                       # Documentação técnica detalhada
 │   ├── ARCHITECTURE.md         # Diagramas e fluxos de dados
 │   ├── BACKEND.md              # Rotas, DTOs e regras de negócio
-│   └── FRONTEND.md             # Guia de componentes e estilização
-├── vite.config.ts              # Configuração do Vite + Proxy /api → NestJS
-├── .gitignore                  # Regras globais de exclusão do Git (Gold Standard)
+│   ├── FRONTEND.md             # Guia de componentes e estilização
+│   └── SECURITY.md             # Procedimento de deploy e segurança
+├── package.json                 # Orquestrador: script dev (concurrently) e proxies para api/ e web/
+├── .vercelignore                 # Garante que a Vercel nunca enxergue api/
+├── .gitignore                     # Regras globais de exclusão do Git
 └── README.md
 ```
 
@@ -68,12 +83,17 @@ apps/
 
 ### 1. Instalar dependências
 
-```bash
-# Na raiz do workspace
-npm install
+Três `node_modules` independentes: a raiz (só o orquestrador `concurrently`),
+`api/` e `web/`.
 
-# No backend NestJS
-cd api && npm install
+```bash
+# Instala os três de uma vez
+npm run install:all
+
+# ...ou manualmente, um de cada vez:
+npm install
+cd api && npm install && cd ..
+cd web && npm install && cd ..
 ```
 
 ### 2. Configurar variáveis de ambiente
@@ -148,8 +168,9 @@ npm run test:e2e
 | `npm run dev:web` | Inicia apenas o frontend Vite React |
 | `npm run test:e2e` | Executa a suíte de testes de integração E2E no backend |
 | `npm run lint` | Executa a verificação estática de tipos TypeScript |
-| `npm run build` | Gera o bundle otimizado de produção do frontend (`dist/`) |
-| `cd api && npm run build` | Compila o backend NestJS (`dist/`) |
+| `npm run build` | Gera o bundle otimizado de produção do frontend (`web/dist/`) |
+| `cd api && npm run build` | Compila o backend NestJS (`api/dist/`) |
+| `npm run install:all` | Instala as dependências da raiz, de `api/` e de `web/` de uma vez |
 
 ---
 
