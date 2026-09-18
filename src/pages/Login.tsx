@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
 import { Button, Input, Card } from '../components/UI';
@@ -12,7 +12,6 @@ import { toast } from 'sonner';
 
 export default function Login() {
   const { login } = useAuth();
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,17 +27,12 @@ export default function Login() {
     try {
       await login(email, password);
       toast.success('Login realizado com sucesso!');
-      
-      // Determine destination based on restored role
-      const storedUserStr = window.sessionStorage.getItem('ojanuan_user');
-      if (storedUserStr) {
-        const storedUser = JSON.parse(storedUserStr);
-        if (storedUser.role === 'PROFESSIONAL') {
-          navigate('/pro/dashboard');
-        } else {
-          navigate('/paciente/dashboard');
-        }
-      }
+      // Sem navegação manual aqui de propósito: esta tela já está envolvida por
+      // <PublicRoute> (src/App.tsx), que observa isAuthenticated/user.role do
+      // AuthContext e redireciona sozinha assim que o login altera esse estado —
+      // o mesmo mecanismo usado por qualquer outra rota pública. Reler e fazer
+      // JSON.parse do sessionStorage aqui era redundante e, se falhasse, exibia
+      // "senha incorreta" para um login que na verdade tinha dado certo.
     } catch (err: any) {
       console.error(err);
       const msg = err.response?.data?.message || 'E-mail ou senha incorretos.';

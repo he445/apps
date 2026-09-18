@@ -102,17 +102,39 @@ class DashboardService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const patients = await Promise.all(connectionRows.map(async (row) => {
-      const latestAssessment = await this.prisma.selfAssessment.findFirst({
-        where: { patientId: row.patientId },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true, moodScore: true, sleepScore: true, energyScore: true, anxietyScore: true },
-      });
+    // Antes: 2 queries por paciente dentro do Promise.all (findFirst + count) — 40
+    // pacientes viravam 80 idas ao banco a cada carregamento deste dashboard. Agora
+    // são 3 queries fixas, independentes de N, combinadas em memória via Map.
+    const patientIds = connectionRows.map((row) => row.patientId);
 
-      const pendingPaymentsCount = await this.prisma.consultation.count({
-        where: { professionalId: user.sub, patientId: row.patientId, paymentStatus: { not: PaymentStatus.PAID } },
-      });
+    const latestPerPatient = patientIds.length === 0 ? [] : await this.prisma.selfAssessment.groupBy({
+      by: ['patientId'],
+      where: { patientId: { in: patientIds } },
+      _max: { createdAt: true },
+    });
+    const latestDateByPatient = new Map(
+      latestPerPatient
+        .filter((row): row is typeof row & { _max: { createdAt: Date } } => row._max.createdAt !== null)
+        .map((row) => [row.patientId, row._max.createdAt]),
+    );
 
+    const latestRows = latestDateByPatient.size === 0 ? [] : await this.prisma.selfAssessment.findMany({
+      where: {
+        OR: [...latestDateByPatient.entries()].map(([patientId, createdAt]) => ({ patientId, createdAt })),
+      },
+      select: { patientId: true, createdAt: true, moodScore: true, sleepScore: true, energyScore: true, anxietyScore: true },
+    });
+    const latestByPatient = new Map(latestRows.map((row) => [row.patientId, row]));
+
+    const pendingCounts = patientIds.length === 0 ? [] : await this.prisma.consultation.groupBy({
+      by: ['patientId'],
+      where: { professionalId: user.sub, patientId: { in: patientIds }, paymentStatus: { not: PaymentStatus.PAID } },
+      _count: true,
+    });
+    const pendingByPatient = new Map(pendingCounts.map((row) => [row.patientId, row._count]));
+
+    const patients = connectionRows.map((row) => {
+      const latestAssessment = latestByPatient.get(row.patientId);
       return {
         id: row.patient.id,
         name: row.patient.fullName,
@@ -125,9 +147,9 @@ class DashboardService {
               indice_bem_estar: Number(((latestAssessment.moodScore + latestAssessment.sleepScore + latestAssessment.energyScore + (6 - latestAssessment.anxietyScore)) / 4).toFixed(2)),
             }
           : null,
-        pendingPaymentsCount,
+        pendingPaymentsCount: pendingByPatient.get(row.patientId) ?? 0,
       };
-    }));
+    });
 
     const inviteToken = await this.createInviteToken(user.sub);
     return {

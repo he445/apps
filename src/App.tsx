@@ -3,35 +3,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LayoutBase } from './components/LayoutBase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from 'sonner';
 
-// Import Pages
-import Login from './pages/Login';
-import Cadastro from './pages/Cadastro';
-import ForgotPassword from './pages/ForgotPassword';
-import OnboardingInvite from './pages/OnboardingInvite';
-import Perfil from './pages/Perfil';
+// Páginas carregadas sob demanda: cada uma vira um chunk próprio, baixado só quando
+// a rota é visitada. Antes, um paciente que abria só o próprio painel baixava
+// também o dashboard administrativo (766 linhas) e o Recharts inteiro, tudo dentro
+// de um único bundle de 862 KB. Os guards de rota abaixo continuam import estático
+// — são pequenos e vivem neste mesmo arquivo, não geram chunk separado de qualquer forma.
+const Login = lazy(() => import('./pages/Login'));
+const Cadastro = lazy(() => import('./pages/Cadastro'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const OnboardingInvite = lazy(() => import('./pages/OnboardingInvite'));
+const Perfil = lazy(() => import('./pages/Perfil'));
 
 // Admin Pages
-import AdminDashboard from './pages/admin/Dashboard';
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 
 // Pro Pages
-import DashboardPro from './pages/pro/Dashboard';
-import PacienteDetail from './pages/pro/PacienteDetail';
-import FinanceiroPro from './pages/pro/Financeiro';
-import AgendaPro from './pages/pro/Agenda';
+const DashboardPro = lazy(() => import('./pages/pro/Dashboard'));
+const PacienteDetail = lazy(() => import('./pages/pro/PacienteDetail'));
+const FinanceiroPro = lazy(() => import('./pages/pro/Financeiro'));
+const AgendaPro = lazy(() => import('./pages/pro/Agenda'));
 
 // Patient Pages
-import DashboardPaciente from './pages/paciente/Dashboard';
-import ProgressoPaciente from './pages/paciente/Progresso';
-import Chat from './pages/paciente/Chat';
-import FinanceiroPaciente from './pages/paciente/Financeiro';
-import AgendaPaciente from './pages/paciente/Agenda';
+const DashboardPaciente = lazy(() => import('./pages/paciente/Dashboard'));
+const ProgressoPaciente = lazy(() => import('./pages/paciente/Progresso'));
+const Chat = lazy(() => import('./pages/paciente/Chat'));
+const FinanceiroPaciente = lazy(() => import('./pages/paciente/Financeiro'));
+const AgendaPaciente = lazy(() => import('./pages/paciente/Agenda'));
+
+// Mesmo spinner já usado pelos guards abaixo enquanto o chunk da rota carrega.
+const RouteFallback: React.FC = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[#F9F8F4]">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7A8B76]" />
+  </div>
+);
 
 // --- ROUTE GUARDS ---
 
@@ -116,6 +127,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <LayoutBase>
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             {/* PUBLIC ROUTES */}
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
@@ -227,6 +239,7 @@ export default function App() {
             <Route path="/" element={<RootRedirect />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </LayoutBase>
       </BrowserRouter>
       

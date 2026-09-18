@@ -10,42 +10,49 @@ import { Response } from 'express';
  * findUnique seguido de create e ainda pode colidir sob concorrência, já que o
  * nível de isolamento padrão do PostgreSQL é read committed.
  */
+/**
+ * Traduz um erro do Prisma para a exceção HTTP equivalente.
+ *
+ * Exportada (em vez de privada ao filtro) porque o TelemetryInterceptor precisa da
+ * mesma regra: sem ela, o interceptor via o erro cru do Prisma antes do filtro atuar
+ * e classificava tudo como 500, mesmo quando o cliente já recebia 409/404 corretos.
+ */
+export function mapPrismaError(exception: Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError): HttpException {
+  if (!(exception instanceof Prisma.PrismaClientKnownRequestError)) {
+    // Erro de forma da query: é defeito de código, não entrada do usuário.
+    return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  switch (exception.code) {
+    case 'P2002': {
+      const target = exception.meta?.target;
+      const campos = Array.isArray(target) ? target.join(', ') : String(target ?? 'registro');
+      return new ConflictException(
+        campos.includes('email') ? 'E-mail já cadastrado.' : `Já existe um registro com este valor (${campos}).`,
+      );
+    }
+    case 'P2025':
+      return new NotFoundException('Registro não encontrado.');
+    case 'P2003':
+      return new ConflictException('Operação bloqueada: o registro está vinculado a outros dados.');
+    default:
+      // Mensagem do Prisma pode conter nome de tabela e coluna: não é para o cliente.
+      return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+}
+
 @Catch(Prisma.PrismaClientKnownRequestError, Prisma.PrismaClientValidationError)
 export class PrismaExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PrismaExceptionFilter.name);
 
   catch(exception: Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<Response>();
-    const mapped = this.toHttpException(exception);
+    const mapped = mapPrismaError(exception);
 
     if (mapped.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(exception.message);
     }
 
     response.status(mapped.getStatus()).json(mapped.getResponse());
-  }
-
-  private toHttpException(exception: Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError): HttpException {
-    if (!(exception instanceof Prisma.PrismaClientKnownRequestError)) {
-      // Erro de forma da query: é defeito de código, não entrada do usuário.
-      return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    switch (exception.code) {
-      case 'P2002': {
-        const target = exception.meta?.target;
-        const campos = Array.isArray(target) ? target.join(', ') : String(target ?? 'registro');
-        return new ConflictException(
-          campos.includes('email') ? 'E-mail já cadastrado.' : `Já existe um registro com este valor (${campos}).`,
-        );
-      }
-      case 'P2025':
-        return new NotFoundException('Registro não encontrado.');
-      case 'P2003':
-        return new ConflictException('Operação bloqueada: o registro está vinculado a outros dados.');
-      default:
-        // Mensagem do Prisma pode conter nome de tabela e coluna: não é para o cliente.
-        return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
   }
 }

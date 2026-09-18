@@ -5,9 +5,24 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { JwtUser } from './auth';
+import { mapPrismaError } from './prisma-exception.filter';
+
+/**
+ * Resolve o status HTTP real de um erro, antes de o PrismaExceptionFilter ter
+ * chance de atuar (interceptors veem o erro primeiro na cadeia do Nest). Sem isto,
+ * um erro do Prisma que o cliente recebe como 409/404 era registrado como 500 aqui.
+ */
+function resolveStatusCode(err: unknown): number {
+  if (err instanceof HttpException) return err.getStatus();
+  if (err instanceof Prisma.PrismaClientKnownRequestError || err instanceof Prisma.PrismaClientValidationError) {
+    return mapPrismaError(err).getStatus();
+  }
+  return 500;
+}
 
 export interface RouteTelemetry {
   method: string;
@@ -207,7 +222,7 @@ export class TelemetryInterceptor implements NestInterceptor {
       catchError((err) => {
         try {
           const duration = Date.now() - startTime;
-          const statusCode = err instanceof HttpException ? err.getStatus() : 500;
+          const statusCode = resolveStatusCode(err);
           TelemetryService.recordRequest(
             method,
             url,
