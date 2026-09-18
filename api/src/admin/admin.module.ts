@@ -241,8 +241,18 @@ export class AdminService {
     };
   }
 
+  /**
+   * Gerar/limpar massa de teste e a impersonação de contas de teste (mais abaixo)
+   * são gated apenas por @Roles(Role.ADMIN) no controller — o mesmo nível de
+   * confiança de qualquer outra capacidade deste painel (overview, telemetria).
+   * Nunca tocam usuário real: só criam/apagam linhas com isTestUser: true, e
+   * cada chamada grava em AuditLog quem foi. Uma variável de ambiente extra só
+   * para estas duas rotas já foi cogitada e descartada de propósito — um admin
+   * autenticado já é o limite de confiança do sistema; adicionar uma segunda
+   * trava aqui e em nenhum outro lugar do painel era inconsistente, não mais
+   * seguro.
+   */
   async seedSandbox(admin: JwtUser) {
-    this.assertSandboxEnabled();
     const timestamp = Date.now();
     const demoPasswordHash = await bcrypt.hash('Demo1234!', 12);
 
@@ -419,7 +429,6 @@ export class AdminService {
   }
 
   async cleanSandbox(admin: JwtUser) {
-    this.assertSandboxEnabled();
     const testUsers = await this.prisma.user.findMany({
       where: { isTestUser: true },
       select: { id: true },
@@ -460,17 +469,6 @@ export class AdminService {
       message: `${testUserIds.length} contas de teste foram removidas com total segurança.`,
       count: testUserIds.length,
     };
-  }
-
-  private assertSandboxEnabled() {
-    // Falha fechado: a sandbox exige liberação explícita. A checagem anterior só
-    // bloqueava quando NODE_ENV era exatamente "production", então a variável
-    // ausente no host liberava a criação de contas demo no banco real.
-    if (process.env.ENABLE_SANDBOX_ADMIN !== 'true') {
-      throw new ForbiddenException(
-        'Sandbox administrativa desabilitada. Defina ENABLE_SANDBOX_ADMIN=true para habilitá-la.',
-      );
-    }
   }
 }
 

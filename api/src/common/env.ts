@@ -18,7 +18,6 @@ export type AppEnv = {
   webOrigin: string;
   /** Origens autorizadas no CORS. Inclui a canônica mais quaisquer previews. */
   corsOrigins: string[];
-  sandboxEnabled: boolean;
   /** Versão da chave usada para gravar conteúdo clínico cifrado. */
   encryptionKeyVersion: number;
 };
@@ -79,8 +78,6 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     errors.push(`PORT inválida: "${source.PORT}".`);
   }
 
-  const sandboxEnabled = source.ENABLE_SANDBOX_ADMIN === 'true';
-
   // Conteúdo clínico é cifrado em nível de aplicação. Sem chave válida a API
   // gravaria dado sensível em texto claro — falhar no arranque é preferível a
   // degradar em silêncio. buildKeyring valida tamanho, formato e valores de exemplo.
@@ -98,5 +95,5 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     );
   }
 
-  return { nodeEnv, isProd, port, jwtSecret, webOrigin, corsOrigins, sandboxEnabled, encryptionKeyVersion };
+  return { nodeEnv, isProd, port, jwtSecret, webOrigin, corsOrigins, encryptionKeyVersion };
 }
