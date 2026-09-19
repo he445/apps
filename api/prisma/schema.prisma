@@ -141,6 +141,9 @@ model Guideline {
   text           String?  @db.VarChar(500)
   encryptedText  String?  @db.Text
   textKeyVersion Int?
+  // Título sempre cifrado: coluna nova, sem dado legado em texto claro para migrar.
+  encryptedTitle  String? @db.Text
+  titleKeyVersion Int?
   createdAt      DateTime @default(now())
 
   @@index([patientId, createdAt])

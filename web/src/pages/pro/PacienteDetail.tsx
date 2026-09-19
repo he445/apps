@@ -101,6 +101,7 @@ export default function PacienteDetail() {
     setSendingOrientation(true);
     try {
       await api.post(`/guidelines/${id}`, {
+        title: orientationTitle,
         text: orientationContent,
       });
 

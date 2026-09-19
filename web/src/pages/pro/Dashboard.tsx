@@ -191,9 +191,11 @@ export default function DashboardPro() {
                         )}
 
                         <div className="flex gap-2">
-                          <Button 
+                          <Button
                             onClick={() => navigate(`/pro/paciente/${p.id}`)}
                             variant="outline"
+                            title="Ver evolução e diário clínico"
+                            aria-label={`Ver evolução de ${p.name}`}
                             className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#7A8B76]"
                           >
                             <TrendingUp className="h-4 w-4" />
@@ -202,6 +204,7 @@ export default function DashboardPro() {
                             onClick={() => navigate(`/paciente/chat?partnerId=${p.id}`)}
                             variant="outline"
                             title="Abrir Chat Clínico"
+                            aria-label={`Abrir chat com ${p.name}`}
                             className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#C16E59]"
                           >
                             <MessageSquare className="h-4 w-4" />

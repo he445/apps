@@ -20,6 +20,7 @@ import { BillingType, ConsultationStatus, PaymentStatus, Role } from '@prisma/cl
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser, Roles, RolesGuard } from '../common/auth';
+import { EncryptionModule, EncryptionService } from '../common/encryption.service';
 import { PrismaModule, PrismaService } from '../common/prisma.service';
 import { TelemetryService } from '../common/telemetry.interceptor';
 
@@ -34,6 +35,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly crypto: EncryptionService,
   ) {}
 
   async getOverview() {
@@ -366,6 +368,8 @@ export class AdminService {
             energyScore: 4,
             socialInteraction: true,
             quickNote: 'Dia produtivo e tranquilo.',
+            encryptedNote: this.crypto.encrypt('Dia produtivo e tranquilo.'),
+            noteKeyVersion: this.crypto.activeVersion,
           },
           {
             patientId: pat2.id,
@@ -375,16 +379,25 @@ export class AdminService {
             energyScore: 2,
             socialInteraction: false,
             quickNote: 'Semana bastante sobrecarregada.',
+            encryptedNote: this.crypto.encrypt('Semana bastante sobrecarregada.'),
+            noteKeyVersion: this.crypto.activeVersion,
           },
         ],
       });
 
       // 6. Create Guidelines
+      // Grava como as rotas reais gravam, para a massa de teste ter a mesma forma
+      // dos dados de produção (texto claro e cifrado convivem até a Release B).
+      const orientacao = 'Praticar o exercício de respiração diafragmática 5 minutos antes de dormir.';
       await tx.guideline.create({
         data: {
           professionalId: pro.id,
           patientId: pat1.id,
-          text: 'Praticar o exercício de respiração diafragmática 5 minutos antes de dormir.',
+          text: orientacao,
+          encryptedText: this.crypto.encrypt(orientacao),
+          textKeyVersion: this.crypto.activeVersion,
+          encryptedTitle: this.crypto.encrypt('Respiração antes de dormir'),
+          titleKeyVersion: this.crypto.activeVersion,
         },
       });
 
@@ -519,7 +532,7 @@ export class AdminController {
 }
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EncryptionModule],
   controllers: [AdminController],
   providers: [AdminService],
   exports: [AdminService],

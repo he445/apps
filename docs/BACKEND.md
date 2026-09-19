@@ -184,8 +184,15 @@ Resposta inclui `indice_bem_estar` calculado automaticamente (0–100).
 
 **POST `/guidelines/:patientId`** — Body:
 ```json
-{ "text": "Praticar respiração diafragmática por 10 minutos ao acordar." }
+{
+  "title": "Respiração ao acordar",
+  "text": "Praticar respiração diafragmática por 10 minutos ao acordar."
+}
 ```
+
+`title` (máx. 120 caracteres) é opcional e fica cifrado em repouso, como o conteúdo.
+Orientações gravadas antes desse campo existir são exibidas no mural do paciente com o
+rótulo genérico "Orientação recebida".
 
 ---
 

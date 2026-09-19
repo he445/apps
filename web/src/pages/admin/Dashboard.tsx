@@ -425,6 +425,8 @@ export default function AdminDashboard() {
                         <div className="flex items-start gap-3">
                           <button
                             onClick={() => toggleProExpand(pro.id)}
+                            aria-expanded={isExpanded}
+                            aria-label={`${isExpanded ? 'Recolher' : 'Expandir'} pacientes de ${pro.name}`}
                             className="p-1 rounded-lg hover:bg-white text-[#6D736E] cursor-pointer mt-0.5"
                           >
                             {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}

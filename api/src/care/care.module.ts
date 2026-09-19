@@ -60,6 +60,9 @@ class AssessmentDto {
 }
 
 class GuidelineDto {
+  // Opcional: a API publica separada do frontend e um bundle antigo em cache ainda
+  // envia só `text`. Sem título, o mural cai no rótulo genérico de antes.
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(120) title?: string;
   @IsString() @MinLength(1) @MaxLength(500) text!: string;
 }
 
@@ -214,7 +217,8 @@ class DashboardService {
         : null,
       orientations: orientations.map((orientation) => ({
         id: orientation.id,
-        title: 'Orientação recebida',
+        // Orientações criadas antes da coluna de título não têm um: mantêm o rótulo genérico.
+        title: this.crypto.readOptional(orientation.encryptedTitle, orientation.titleKeyVersion, null) ?? 'Orientação recebida',
         content: this.crypto.read(orientation.encryptedText, orientation.textKeyVersion, orientation.text),
         date: orientation.createdAt.toISOString().slice(0, 10),
       })),
@@ -504,6 +508,7 @@ class AssessmentsService {
   async addGuideline(user: JwtUser, patientId: string, dto: GuidelineDto) {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException();
     await this.access.pair(user, patientId);
+    const title = dto.title?.trim() || null;
     const created = await this.prisma.guideline.create({
       data: {
         professionalId: user.sub,
@@ -511,12 +516,15 @@ class AssessmentsService {
         text: dto.text,
         encryptedText: this.crypto.encrypt(dto.text),
         textKeyVersion: this.crypto.activeVersion,
+        encryptedTitle: title ? this.crypto.encrypt(title) : null,
+        titleKeyVersion: title ? this.crypto.activeVersion : null,
       },
     });
     return {
       id: created.id,
       patientId: created.patientId,
       professionalId: created.professionalId,
+      title,
       text: dto.text,
       createdAt: created.createdAt,
     };
@@ -531,6 +539,7 @@ class AssessmentsService {
       id: row.id,
       patientId: row.patientId,
       professionalId: row.professionalId,
+      title: this.crypto.readOptional(row.encryptedTitle, row.titleKeyVersion, null),
       text: this.crypto.read(row.encryptedText, row.textKeyVersion, row.text),
       createdAt: row.createdAt,
     }));
