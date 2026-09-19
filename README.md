@@ -123,8 +123,12 @@ convites estão em [docs/SECURITY.md](docs/SECURITY.md).
 ```bash
 cd api
 npx prisma generate
-npx prisma db push
+npm run migrate:deploy
 ```
+
+Use `migrate:deploy` (e não `prisma db push`): ele aplica as migrations versionadas e
+registra o histórico. Um banco sincronizado com `db push` não tem esse histórico e
+silenciosamente deixa de receber as migrations seguintes.
 
 ### 4. Executar em Desenvolvimento
 

@@ -12,6 +12,9 @@ api/tsconfig.tsbuildinfo
 api/prisma/*.js
 api/prisma/*.js.map
 api/prisma/*.d.ts
+# deploy.js é fonte, não saída de build: roda no arranque em produção, onde ts-node
+# (devDependency) não existe.
+!api/prisma/deploy.js
 
 # Environment & Secrets (NEVER COMMIT SENSITIVE KEYS)
 .env

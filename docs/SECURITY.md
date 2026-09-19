@@ -9,17 +9,22 @@ Este documento registra os controles de segurança e o procedimento de implanta�
 - Tokens emitidos após a migração carregam `tokenVersion`. Ao trocar e-mail ou senha, a versão é incrementada e o cliente recebe um token substituto.
 - CORS aceita somente `WEB_ORIGIN` e as origens locais de desenvolvimento; não há mais coringa para domínios Vercel nem credenciais cross-site.
 - Novos convites usam token URL-safe de 256 bits, validade de sete dias e uso único. Convites antigos de seis caracteres continuam aceitos para não romper links já enviados.
-- Simulação administrativa só aceita contas de teste. A sandbox fica bloqueada em produção, salvo se `ENABLE_SANDBOX_ADMIN=true` for definido de propósito.
+- Simulação administrativa só aceita contas de teste, e tanto a simulação quanto a geração/limpeza de massa de teste são gravadas em `AuditLog`. O único gate é o papel `ADMIN`, igual ao restante do painel.
 
 ## Deploy sem interrupção
 
 1. Confirme que `WEB_ORIGIN` contém a URL exata do frontend em produção. Se houver mais de uma origem autorizada, separe-as por vírgula.
-2. Faça backup do banco e aplique primeiro a migração aditiva:
+2. Faça backup do banco. As migrations são aplicadas automaticamente: `npm start` roda
+   `prisma/deploy.js` antes de subir a API. Para aplicar fora do arranque (ou conferir
+   o que está pendente), rode `cd api && npm run migrate:deploy`.
 
-   ```bash
-   cd api
-   npx prisma migrate deploy
-   ```
+   O script detecta um banco criado com `prisma db push` — sem a tabela de histórico
+   `_prisma_migrations`, `migrate deploy` aborta com P3005 e não aplica nada — e nesse
+   caso marca a migration inicial como aplicada antes de seguir. As demais migrations
+   são aditivas e guardadas por `IF NOT EXISTS`.
+
+   No Render, isso exige que o **Start Command** seja `npm start` (o padrão). Se estiver
+   `node dist/main`, as migrations não rodam e o banco volta a ficar defasado.
 
 3. Publique API e frontend na mesma janela. Não é necessário limpar storage, revogar tokens ou derrubar sessões existentes.
 4. Verifique `GET /api/v1/health`, login de uma conta existente e o fluxo de convite. Gere novos convites para os próximos pacientes; links antigos não precisam ser substituídos imediatamente.
