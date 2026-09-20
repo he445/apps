@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { toast } from 'sonner';
 import { Logo } from './Logo';
 import { GhostBar } from './GhostBar';
 import { 
@@ -23,7 +24,7 @@ interface LayoutBaseProps {
 }
 
 export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
-  const { user, logout, isProfessional, isAdmin } = useAuth();
+  const { user, logout, isProfessional, isAdmin, acceptPrivacyPolicy } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -58,6 +59,57 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
   // Public views (login, register, invite previews)
   if (!user) {
     return <div className="min-h-screen bg-[#F9F8F4]">{children}</div>;
+  }
+
+  // Accounts created before the privacy policy existed have no recorded consent. The
+  // app is not usable until they give it — clinical data is sensitive personal data and
+  // consent is its legal basis. Two exemptions: the policy page itself, since nobody can
+  // be asked to accept a text they cannot open; and impersonation, since consent is
+  // personal and an admin must not give it on someone's behalf.
+  if (!user.consentedAt && !user.isImpersonated && location.pathname !== '/privacidade') {
+    return (
+      <div className="min-h-screen bg-[#F9F8F4] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-lg flex flex-col gap-6">
+          <div className="flex flex-col items-center text-center gap-2">
+            <Logo size="lg" />
+            <h1 className="text-xl font-bold text-[#2C332D]">Precisamos do seu aceite</h1>
+          </div>
+          <div className="bg-white rounded-[24px] border border-[#7A8B76]/15 shadow-md p-6 flex flex-col gap-5">
+            <p className="text-sm text-[#6D736E] leading-relaxed">
+              Publicamos a Política de Privacidade do Ojanuan. Como o acompanhamento
+              envolve dados de saúde, precisamos do seu consentimento específico para
+              continuar tratando essas informações.
+            </p>
+            <a
+              href="/privacidade"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-bold text-[#C16E59] hover:underline"
+            >
+              Ler a Política de Privacidade
+            </a>
+            <button
+              onClick={async () => {
+                try {
+                  await acceptPrivacyPolicy();
+                } catch {
+                  toast.error('Não foi possível registrar o aceite. Tente novamente.');
+                }
+              }}
+              className="w-full px-4 py-3 rounded-2xl bg-[#7A8B76] hover:bg-[#687764] text-white text-sm font-bold transition-all cursor-pointer active:scale-95"
+            >
+              Li e concordo
+            </button>
+            <button
+              onClick={logout}
+              className="text-xs text-[#6D736E] hover:text-[#2C332D] hover:underline cursor-pointer"
+            >
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Navigation Items per Role

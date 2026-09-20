@@ -10,6 +10,7 @@ interface AuthContextType {
   register: (data: any) => Promise<void>;
   logout: () => void;
   updateProfile: (data: any) => Promise<void>;
+  acceptPrivacyPolicy: () => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
   impersonateUser: (token: string, user: User) => void;
   exitImpersonation: () => void;
@@ -137,6 +138,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Records consent for an account created before the policy existed. Updates the
+   * stored session so the blocking notice disappears without a re-login.
+   */
+  const acceptPrivacyPolicy = async () => {
+    const { data } = await api.post('/users/me/consent');
+    setUser((current) => {
+      if (!current) return current;
+      const updated = { ...current, consentedAt: data.consentedAt };
+      if (token) writeStoredSession(token, updated);
+      return updated;
+    });
+  };
+
   const deleteAccount = async (password: string) => {
     try {
       await api.delete('/users/me', { data: { password } });
@@ -219,6 +234,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         updateProfile,
+        acceptPrivacyPolicy,
         deleteAccount,
         impersonateUser,
         exitImpersonation,

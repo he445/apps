@@ -13,6 +13,7 @@ import { Toaster } from 'sonner';
 const Login = lazy(() => import('./pages/Login'));
 const SignUp = lazy(() => import('./pages/SignUp'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const OnboardingInvite = lazy(() => import('./pages/OnboardingInvite'));
 const Profile = lazy(() => import('./pages/Profile'));
 
@@ -129,6 +130,10 @@ export default function App() {
             <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
             <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
             <Route path="/invite/:token" element={<PublicRoute><OnboardingInvite /></PublicRoute>} />
+            {/* Outside PublicRoute on purpose: that guard bounces an authenticated
+                visitor to their dashboard, and someone already using the app has to be
+                able to read what they agreed to. */}
+            <Route path="/privacidade" element={<PrivacyPolicy />} />
 
             {/* PRIVATE / COMMON ROUTES */}
             <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />

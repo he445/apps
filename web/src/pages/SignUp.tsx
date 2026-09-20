@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
 import { Button, Input, Card } from '../components/UI';
 import { toast } from 'sonner';
+import { CONSENT_CHECKBOX_LABEL } from '../content/privacyPolicy';
 
 export default function SignUp() {
   const { register } = useAuth();
@@ -19,6 +20,7 @@ export default function SignUp() {
   const [password, setPassword] = useState('');
   const [cpf, setCpf] = useState('');
   const [inviteToken, setInviteToken] = useState(urlInviteToken);
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +35,11 @@ export default function SignUp() {
       return;
     }
 
+    if (!acceptedPolicy) {
+      toast.error('É necessário aceitar a Política de Privacidade para criar a conta.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await register({
@@ -43,6 +50,7 @@ export default function SignUp() {
         cpf: role === 'PATIENT' ? cpf : undefined,
         inviteToken: role === 'PATIENT' && inviteToken ? inviteToken : undefined,
         token: role === 'PATIENT' && inviteToken ? inviteToken : undefined,
+        acceptedPrivacyPolicy: true,
       });
 
       toast.success('Cadastro realizado com sucesso!');
@@ -163,11 +171,34 @@ export default function SignUp() {
               </>
             )}
 
+            <label className="flex items-start gap-3 cursor-pointer mt-2">
+              <input
+                type="checkbox"
+                checked={acceptedPolicy}
+                onChange={(e) => setAcceptedPolicy(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#7A8B76] cursor-pointer"
+                required
+              />
+              <span className="text-xs text-[#6D736E] leading-relaxed">
+                {CONSENT_CHECKBOX_LABEL}{' '}
+                <Link
+                  to="/privacidade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-[#C16E59] hover:underline"
+                >
+                  Ler a política
+                </Link>
+                .
+              </span>
+            </label>
+
             <Button
               type="submit"
               variant={role === 'PROFESSIONAL' ? 'primary' : 'secondary'}
               className="w-full mt-2"
               isLoading={isLoading}
+              disabled={!acceptedPolicy}
             >
               Criar Conta e Entrar
             </Button>

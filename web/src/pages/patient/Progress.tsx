@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Card, Skeleton } from '../../components/UI';
@@ -156,7 +157,11 @@ export default function PatientProgress() {
         <div className="flex flex-col gap-1 text-sm text-[#2C332D]">
           <span className="font-bold">Privacidade de Dados Assegurada</span>
           <p className="text-xs text-[#6D736E] leading-relaxed">
-            Seu progresso é visualizado de forma agregada por você e de maneira multidimensional por seu profissional de saúde vinculado. O Ojanuan segue rígidos parâmetros de sigilo profissional ético, em total alinhamento com as resoluções do Conselho Federal de Psicologia (CFP).
+            Seu progresso é visualizado por você e pelo profissional ao qual sua conta está vinculada. As anotações das autoavaliações são cifradas antes de chegar ao banco de dados. Detalhes do que é coletado, por quanto tempo e quais são os seus direitos estão na{' '}
+            <Link to="/privacidade" className="font-semibold text-[#7A8B76] hover:underline">
+              Política de Privacidade
+            </Link>
+            .
           </p>
         </div>
       </div>

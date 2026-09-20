@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Injectable, Module, Put, UnauthorizedException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Injectable, Module, Post, Put, UnauthorizedException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser } from '../common/auth';
 import { PrismaService } from '../common/prisma.service';
+import { CURRENT_PRIVACY_POLICY_VERSION } from '../auth/auth.module';
 
 class DeleteAccountDto {
   @IsString()
@@ -66,6 +67,23 @@ class UsersService {
       }),
     ]);
     return { deleted: true };
+  }
+
+  /**
+   * Records consent for an account created before the privacy policy existed — or
+   * before the version now in force. Sign-up records it inline; this is the catch-up
+   * path, asked for on the next visit.
+   */
+  async acceptPrivacyPolicy(user: JwtUser) {
+    if (user.isImpersonated) {
+      throw new ForbiddenException('O consentimento é pessoal e não pode ser dado em modo simulação.');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: user.sub },
+      data: { consentedAt: new Date(), consentVersion: CURRENT_PRIVACY_POLICY_VERSION },
+      select: { consentedAt: true, consentVersion: true },
+    });
+    return updated;
   }
 
   async updateProfile(user: JwtUser, dto: UpdateProfileDto) {
@@ -183,6 +201,13 @@ class UsersController {
   @ApiOperation({ summary: 'Excluir conta (LGPD Soft Delete)' })
   deleteMyAccount(@CurrentUser() user: JwtUser, @Body() dto: DeleteAccountDto) {
     return this.users.eraseActiveData(user, dto.password);
+  }
+
+  @Post('me/consent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record consent to the privacy policy in force' })
+  acceptPrivacyPolicy(@CurrentUser() user: JwtUser) {
+    return this.users.acceptPrivacyPolicy(user);
   }
 
   @Put('profile')

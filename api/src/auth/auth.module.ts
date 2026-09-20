@@ -5,9 +5,18 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { InvitationStatus, Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { Equals, IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { PrismaModule, PrismaService } from '../common/prisma.service';
 import { Public } from '../common/auth';
+
+/**
+ * Version of the privacy policy currently in force. Recorded on the account at sign-up
+ * so a later change to the text can require a fresh consent.
+ *
+ * Must be kept in sync with PRIVACY_POLICY_VERSION in
+ * `web/src/content/privacyPolicy.ts`, which only renders it.
+ */
+export const CURRENT_PRIVACY_POLICY_VERSION = '2026-09-20';
 
 class RegisterDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -23,6 +32,12 @@ class RegisterDto {
   @IsOptional() @IsString() crp?: string;
   @IsOptional() @IsString() inviteToken?: string;
   @IsOptional() @IsString() token?: string;
+  // Required, unlike every other addition to a DTO in this codebase: clinical content is
+  // sensitive personal data (LGPD art. 11) and creating an account without a recorded
+  // consent is exactly what must not happen. A stale cached bundle gets a 400 until it
+  // reloads, and that is the correct outcome.
+  @IsBoolean() @Equals(true, { message: 'É necessário aceitar a Política de Privacidade.' })
+  acceptedPrivacyPolicy!: boolean;
 }
 
 class LoginDto {
@@ -91,8 +106,13 @@ class AuthService {
           role: dto.role,
           cpf: dto.cpf,
           crp: dto.crp,
+          consentedAt: new Date(),
+          consentVersion: CURRENT_PRIVACY_POLICY_VERSION,
         },
-        select: { id: true, fullName: true, email: true, role: true, cpf: true, tokenVersion: true },
+        select: {
+          id: true, fullName: true, email: true, role: true, cpf: true, tokenVersion: true,
+          consentedAt: true,
+        },
       });
 
       if (professionalId) {
@@ -130,6 +150,9 @@ class AuthService {
       pixKey: user.settings?.pixKey || '',
       sessionPrice: user.settings ? Number(user.settings.sessionDefaultPrice) : undefined,
       cancelLimitHours: user.settings?.cancellationLimitHours,
+      // Null means the account predates the privacy policy (or an updated version of
+      // it) and has to consent before carrying on.
+      consentedAt: user.consentedAt,
     };
     return {
       user: userPayload,

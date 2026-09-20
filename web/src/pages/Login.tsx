@@ -107,6 +107,15 @@ export default function Login() {
             </p>
           </div>
         </Card>
+
+        <div className="text-center">
+          <Link
+            to="/privacidade"
+            className="text-xs text-[#6D736E] hover:text-[#2C332D] hover:underline"
+          >
+            Política de Privacidade
+          </Link>
+        </div>
       </div>
     </div>
   );

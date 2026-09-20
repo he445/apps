@@ -8,6 +8,8 @@ export interface User {
   isDeleted: boolean;
   isTestUser?: boolean;
   isImpersonated?: boolean;
+  /** Null when the account has not yet consented to the policy in force. */
+  consentedAt?: string | null;
   cpf?: string;
   crp?: string;
   pixKey?: string;
