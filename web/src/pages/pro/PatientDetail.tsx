@@ -44,12 +44,20 @@ interface PatientDetails {
   cpf?: string;
 }
 
+interface SentGuideline {
+  id: string;
+  title: string | null;
+  text: string;
+  createdAt: string;
+}
+
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
   const [patient, setPatient] = useState<PatientDetails | null>(null);
   const [evaluations, setEvaluations] = useState<MoodLog[]>([]);
+  const [guidelines, setGuidelines] = useState<SentGuideline[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New orientation states
@@ -72,9 +80,12 @@ export default function PatientDetail() {
         }
         setPatient(currentPatient);
 
-        // Fetch evaluations
-        const evalsRes = await api.get(`/assessments/${id}`);
+        const [evalsRes, guidelinesRes] = await Promise.all([
+          api.get(`/assessments/${id}`),
+          api.get(`/guidelines/${id}`),
+        ]);
         setEvaluations(evalsRes.data);
+        setGuidelines(guidelinesRes.data);
       } catch (err: any) {
         console.error(err);
         toast.error('Erro ao buscar dados clínicos do paciente.');
@@ -95,12 +106,13 @@ export default function PatientDetail() {
 
     setSendingOrientation(true);
     try {
-      await api.post(`/guidelines/${id}`, {
+      const { data } = await api.post(`/guidelines/${id}`, {
         title: orientationTitle,
         text: orientationContent,
       });
 
       toast.success('Orientação terapêutica enviada com sucesso!');
+      setGuidelines((previous) => [data, ...previous]);
       setOrientationTitle('');
       setOrientationContent('');
     } catch (err: any) {
@@ -356,6 +368,43 @@ export default function PatientDetail() {
                   Disparar ao Mural
                 </Button>
               </form>
+            </Card>
+
+            {/* Guidelines already on the patient's board */}
+            <Card className="shadow-2xs">
+              <div className="flex flex-col gap-4">
+                <h3 className="text-base font-bold text-[#2C332D] border-b border-[#6D736E]/10 pb-2 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-[#7A8B76]" />
+                  <span>Orientações no Mural ({guidelines.length})</span>
+                </h3>
+
+                {guidelines.length === 0 ? (
+                  <p className="text-xs text-[#6D736E] italic">
+                    Nenhuma orientação enviada a {patient?.name} até agora.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
+                    {guidelines.map((guideline) => (
+                      <div
+                        key={guideline.id}
+                        className="border-l-4 border-l-[#C16E59] bg-[#F9F8F4] rounded-r-lg p-3 flex flex-col gap-1"
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-bold text-[#2C332D]">
+                            {guideline.title || 'Orientação enviada'}
+                          </span>
+                          <span className="text-[10px] text-[#6D736E] shrink-0">
+                            {new Date(guideline.createdAt).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#6D736E] whitespace-pre-wrap leading-relaxed">
+                          {guideline.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Card>
 
             {/* Quick Contact Box */}
