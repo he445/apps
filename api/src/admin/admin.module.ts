@@ -22,6 +22,9 @@ import { EncryptionModule, EncryptionService } from '../common/encryption.servic
 import { PrismaModule, PrismaService } from '../common/prisma.service';
 import { TelemetryService } from '../common/telemetry.interceptor';
 
+/** How long persisted errors are kept. Pruned when an admin opens the panel. */
+const ERROR_LOG_RETENTION_DAYS = 30;
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -168,9 +171,33 @@ export class AdminService {
     };
   }
 
+  /**
+   * Reads the persisted errors rather than the in-memory ring, which a restart wipes.
+   *
+   * Pruning rides along on this call instead of a scheduler: the cost lands on an
+   * administrator opening the panel, never on a request being served.
+   */
   async getTelemetryErrors() {
+    const cutoff = new Date(Date.now() - ERROR_LOG_RETENTION_DAYS * 86_400_000);
+    await this.prisma.errorLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+
+    const rows = await this.prisma.errorLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
     return {
-      errors: TelemetryService.getRecentErrors(),
+      errors: rows.map((row) => ({
+        id: row.id,
+        timestamp: row.createdAt,
+        method: row.method,
+        path: row.path,
+        statusCode: row.statusCode,
+        message: row.message,
+        userId: row.userId ?? undefined,
+        userRole: row.userRole ?? undefined,
+        ip: row.ipAddress ?? undefined,
+      })),
     };
   }
 

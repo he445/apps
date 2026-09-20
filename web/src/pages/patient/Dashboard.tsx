@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { Button, Card, Input, Skeleton } from '../../components/UI';
+import { Button, Card, Input, Modal, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
 import { 
   Smile, 
@@ -23,12 +23,13 @@ interface Guideline {
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
-  const [guidelines, setOrientations] = useState<Guideline[]>([]);
+  const [guidelines, setGuidelines] = useState<Guideline[]>([]);
   const [hasEvaluatedToday, setHasEvaluatedToday] = useState(false);
-  const [professionalName, setPsychologistName] = useState('');
+  const [professionalName, setProfessionalName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [switchingPsychologist, setSwitchingPsychologist] = useState(false);
+  const [switchModalOpen, setSwitchModalOpen] = useState(false);
 
   // Form values
   const [mood, setMood] = useState<number>(3);
@@ -45,8 +46,8 @@ export default function PatientDashboard() {
   const fetchDashboardData = async () => {
     try {
       const response = await api.get('/care/patient/dashboard');
-      setOrientations(response.data.guidelines);
-      setPsychologistName(response.data.professionalName);
+      setGuidelines(response.data.guidelines);
+      setProfessionalName(response.data.professionalName);
       setHasEvaluatedToday(response.data.hasEvaluatedToday);
 
       const todaysMood = response.data.todaysMood;
@@ -98,17 +99,27 @@ export default function PatientDashboard() {
     }
   };
 
-  const handleUseInviteCode = async (e: React.FormEvent) => {
+  const handleUseInviteCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteCode.trim()) {
       toast.error('Informe o código de convite.');
       return;
     }
+    // Applying a code while already linked replaces the link, and the previous
+    // professional's chat and history become unreachable. Worth a deliberate step.
+    if (professionalName && !professionalName.startsWith('Aguardando')) {
+      setSwitchModalOpen(true);
+      return;
+    }
+    applyInviteCode();
+  };
 
+  const applyInviteCode = async () => {
+    setSwitchModalOpen(false);
     setSwitchingPsychologist(true);
     try {
       const response = await api.post('/care/patient/invitations/accept', { token: inviteCode.trim() });
-      setPsychologistName(response.data.professionalName || 'Psicólogo vinculado');
+      setProfessionalName(response.data.professionalName || 'Psicólogo vinculado');
       toast.success(`Vínculo atualizado com ${response.data.professionalName || 'o profissional selecionado'}.`);
       setInviteCode('');
     } catch (err: any) {
@@ -391,6 +402,37 @@ export default function PatientDashboard() {
         </div>
 
       </div>
+
+      <Modal
+        isOpen={switchModalOpen}
+        onClose={() => setSwitchModalOpen(false)}
+        title="Trocar de profissional"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-[#6D736E] leading-relaxed">
+            Você está vinculado a{' '}
+            <strong className="text-[#2C332D]">{professionalName}</strong>. Ao aplicar
+            este convite, o vínculo passa para o novo profissional.
+          </p>
+          <p className="text-sm text-[#6D736E] leading-relaxed">
+            A partir daí, você e{' '}
+            <strong className="text-[#2C332D]">{professionalName}</strong> deixam de ter
+            acesso ao histórico compartilhado: o chat e as autoavaliações desse
+            acompanhamento ficam indisponíveis para os dois lados.
+          </p>
+          <p className="text-xs text-[#6D736E]">
+            Se quiser guardar uma cópia antes, use "Baixar meus dados" no Perfil.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setSwitchModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={applyInviteCode} isLoading={switchingPsychologist}>
+              Trocar mesmo assim
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );

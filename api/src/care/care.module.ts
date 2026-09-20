@@ -268,6 +268,22 @@ class DashboardService {
         if (claim.count !== 1) throw new NotFoundException('Convite já foi utilizado.');
       }
 
+      // Switching is destructive from the patient's point of view: the clinical rows
+      // stay in the database, but every read goes through AccessService.pair, so chat,
+      // assessments and guidelines with the previous professional become unreachable
+      // for both sides. It used to happen silently and leave no trace.
+      const previous = await tx.professionalPatient.findUnique({ where: { patientId: user.sub } });
+      if (previous && previous.professionalId !== invitation.professionalId) {
+        await tx.auditLog.create({
+          data: {
+            actorId: user.sub,
+            targetId: previous.professionalId,
+            action: 'PROFESSIONAL_SWITCHED',
+            details: `Paciente ${user.email} trocou do profissional ${previous.professionalId} para ${invitation.professionalId}.`,
+          },
+        });
+      }
+
       await tx.professionalPatient.deleteMany({ where: { patientId: user.sub } });
       await tx.professionalPatient.create({
         data: { professionalId: invitation.professionalId, patientId: user.sub },

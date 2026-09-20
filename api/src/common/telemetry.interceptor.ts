@@ -9,12 +9,13 @@ import { Prisma } from '@prisma/client';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { JwtUser } from './auth';
+import { PrismaService } from './prisma.service';
 import { mapPrismaError } from './prisma-exception.filter';
 
 /**
- * Resolve o status HTTP real de um erro, antes de o PrismaExceptionFilter ter
- * chance de atuar (interceptors veem o erro primeiro na cadeia do Nest). Sem isto,
- * um erro do Prisma que o cliente recebe como 409/404 era registrado como 500 aqui.
+ * Resolves the real HTTP status of an error before PrismaExceptionFilter gets a chance
+ * to act (interceptors see the error first in Nest's chain). Without this, a Prisma
+ * error the client receives as 409/404 was recorded as 500 here.
  */
 function resolveStatusCode(err: unknown): number {
   if (err instanceof HttpException) return err.getStatus();
@@ -56,7 +57,7 @@ export class TelemetryService {
   /**
    * Cap on distinct tracked routes. The project has ~33; anything beyond that only
    * shows up if normalisation lets something variable through, and then the Map cannot
-   * crescer sem limite dentro de um processo de vida longa.
+   * cannot grow without bound inside a long-lived process.
    */
   private static readonly MAX_ROUTES = 200;
   private static totalRequests = 0;
@@ -166,10 +167,15 @@ export class TelemetryService {
     };
   }
 
+  /** Exposed so the interceptor stores the same scrubbed path it reports. */
+  static normalize(path: string): string {
+    return this.normalizePath(path);
+  }
+
   /**
    * Reduces the URL to a stable template. Besides grouping statistics this is a
    * security control: invitation tokens are single-use secrets and must not
-   * virar chave do Map — de onde vazariam para GET /admin/telemetry/routes.
+   * become a Map key, from where they would leak into GET /admin/telemetry/routes.
    *
    * The last rule is the safety net: any segment long enough to be an identifier or a
    * secret (the invitation token is 43 characters) is dropped even when it matches no
@@ -187,6 +193,35 @@ export class TelemetryService {
 
 @Injectable()
 export class TelemetryInterceptor implements NestInterceptor {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Persists an error so it survives a restart — the in-memory ring above used to lose
+   * everything whenever Render recycled the process, which is exactly when the log
+   * matters. Only errors are written: route statistics are high-frequency and not worth
+   * a row per request.
+   *
+   * Fire-and-forget on purpose: telemetry must never fail or delay the response, the
+   * same invariant the counters above already respect.
+   */
+  private persistError(entry: Omit<ErrorLogEntry, 'id' | 'timestamp'>) {
+    this.prisma.errorLog
+      .create({
+        data: {
+          method: entry.method,
+          path: entry.path.slice(0, 300),
+          statusCode: entry.statusCode,
+          message: entry.message.slice(0, 2000),
+          userId: entry.userId,
+          userRole: entry.userRole,
+          ipAddress: entry.ip,
+        },
+      })
+      .catch(() => {
+        // A telemetry write failing is not worth turning into a request failure.
+      });
+  }
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const http = context.switchToHttp();
     const request = http.getRequest<{ method: string; originalUrl?: string; url: string; ip?: string; user?: JwtUser }>();
@@ -232,6 +267,15 @@ export class TelemetryInterceptor implements NestInterceptor {
             request.user,
             request.ip
           );
+          this.persistError({
+            method: method.toUpperCase(),
+            path: TelemetryService.normalize(url),
+            statusCode,
+            message: err instanceof Error ? err.message : String(err),
+            userId: request.user?.sub,
+            userRole: request.user?.role,
+            ip: request.ip,
+          });
         } catch {
           // Never fail error propagation
         }
