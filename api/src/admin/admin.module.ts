@@ -16,6 +16,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BillingType, ConsultationStatus, PaymentStatus, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { CurrentUser, JwtUser, Roles, RolesGuard } from '../common/auth';
 import { EncryptionModule, EncryptionService } from '../common/encryption.service';
 import { PrismaModule, PrismaService } from '../common/prisma.service';
@@ -231,6 +232,55 @@ export class AdminService {
         cancelLimitHours: targetUser.settings?.cancellationLimitHours,
         isImpersonated: true,
       },
+    };
+  }
+
+  /**
+   * Issues a temporary password for a user who cannot get back in.
+   *
+   * There is no self-service reset: the product has no e-mail provider, so the only
+   * recovery path is an administrator doing it deliberately and telling the person
+   * out of band. The password is returned once in the response and stored nowhere —
+   * only its hash reaches the database.
+   */
+  async resetUserPassword(admin: JwtUser, targetUserId: string) {
+    if (admin.isImpersonated) {
+      throw new ForbiddenException('Ações destrutivas são bloqueadas no modo simulação.');
+    }
+
+    const target = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!target || target.isDeleted) {
+      throw new NotFoundException('Usuário não encontrado ou inativo.');
+    }
+
+    // base64url over 9 bytes gives 12 characters with no ambiguous separators to
+    // garble when the admin copies it into a message.
+    const temporaryPassword = randomBytes(9).toString('base64url');
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: target.id },
+        data: {
+          password: await bcrypt.hash(temporaryPassword, 12),
+          // Same mechanism as UsersService.updateProfile: bumping the version makes
+          // JwtAuthGuard reject every token already issued to this account.
+          tokenVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          actorId: admin.sub,
+          targetId: target.id,
+          action: 'PASSWORD_RESET',
+          details: `Admin ${admin.email} redefiniu a senha de ${target.email} (${target.role}).`,
+        },
+      }),
+    ]);
+
+    return {
+      message: 'Senha temporária gerada. Ela não será exibida novamente.',
+      email: target.email,
+      temporaryPassword,
     };
   }
 
@@ -505,6 +555,12 @@ export class AdminController {
   @ApiOperation({ summary: 'Gerar Actor Token (RFC 8693) para testar conta de teste em tempo real' })
   impersonate(@CurrentUser() admin: JwtUser, @Param('userId') userId: string) {
     return this.admin.impersonateUser(admin, userId);
+  }
+
+  @Post('users/:userId/reset-password')
+  @ApiOperation({ summary: 'Issue a temporary password for a user who lost access' })
+  resetPassword(@CurrentUser() admin: JwtUser, @Param('userId') userId: string) {
+    return this.admin.resetUserPassword(admin, userId);
   }
 
   @Post('sandbox/seed')

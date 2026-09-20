@@ -49,6 +49,10 @@ model User {
   isTestUser Boolean  @default(false)
   isDeleted  Boolean  @default(false)
   tokenVersion Int    @default(0)
+  // Consentimento LGPD: nulo significa que a conta ainda não aceitou a política
+  // vigente e precisa aceitá-la para seguir usando o app.
+  consentedAt    DateTime?
+  consentVersion String?  @db.VarChar(20)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -168,6 +172,23 @@ model ChatMessage {
   // lidera por senderId e não atende esse predicado: sem este, toda contagem
   // varria a tabela que mais cresce no sistema.
   @@index([receiverId, isRead])
+}
+
+/// Erros 4xx/5xx capturados pelo TelemetryInterceptor. Antes viviam só em memória e
+/// se perdiam a cada restart. O painel administrativo lê os mais recentes e poda os
+/// antigos na mesma chamada, para não precisar de agendador.
+model ErrorLog {
+  id         String   @id @default(uuid())
+  method     String   @db.VarChar(10)
+  path       String   @db.VarChar(300)
+  statusCode Int
+  message    String   @db.Text
+  userId     String?
+  userRole   String?  @db.VarChar(20)
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model AuditLog {

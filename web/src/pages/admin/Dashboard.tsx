@@ -22,8 +22,11 @@ import {
   Eye,
   RefreshCw,
   Terminal,
-  Layers
+  Layers,
+  KeyRound,
+  Copy
 } from 'lucide-react';
+import { Button, Modal } from '../../components/UI';
 
 export default function AdminDashboard() {
   const { impersonateUser } = useAuth();
@@ -35,6 +38,11 @@ export default function AdminDashboard() {
   const [routes, setRoutes] = useState<RouteTelemetry[]>([]);
   const [errors, setErrors] = useState<ErrorLogEntry[]>([]);
   const [expandedPros, setExpandedPros] = useState<Record<string, boolean>>({});
+
+  // Password reset: the confirmation target, then the one-time result to show.
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   // Sandbox & Playground states
   const [seeding, setSeeding] = useState(false);
@@ -103,6 +111,20 @@ export default function AdminDashboard() {
       impersonateUser(res.data.token, res.data.user);
     } catch (err: any) {
       toast.error('Erro ao simular usuário: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      const res = await api.post(`/admin/users/${resetTarget.id}/reset-password`);
+      setResetTarget(null);
+      setResetResult({ email: res.data.email, temporaryPassword: res.data.temporaryPassword });
+    } catch (err: any) {
+      toast.error('Erro ao redefinir senha: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -451,6 +473,16 @@ export default function AdminDashboard() {
                           </div>
 
                           <button
+                            onClick={() => setResetTarget({ id: pro.id, name: pro.name })}
+                            title="Redefinir a senha deste profissional"
+                            aria-label={`Redefinir a senha de ${pro.name}`}
+                            className="px-3 py-1.5 rounded-xl border border-[#7A8B76]/25 hover:bg-[#F9F8F4] text-[#2C332D] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Senha</span>
+                          </button>
+
+                          <button
                             onClick={() => handleImpersonate(pro.id, pro.name)}
                             className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                           >
@@ -486,13 +518,24 @@ export default function AdminDashboard() {
                                     </div>
                                     <p className="text-[11px] text-[#6D736E] truncate">{pat.email}</p>
                                   </div>
-                                  <button
-                                    onClick={() => handleImpersonate(pat.id, pat.name)}
-                                    className="p-1.5 rounded-lg bg-[#F9F8F4] hover:bg-amber-100 text-slate-800 hover:text-amber-900 transition-all text-[11px] font-bold shrink-0 cursor-pointer"
-                                    title="Simular este paciente"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      onClick={() => setResetTarget({ id: pat.id, name: pat.name })}
+                                      className="p-1.5 rounded-lg bg-[#F9F8F4] hover:bg-[#7A8B76]/15 text-[#2C332D] transition-all cursor-pointer"
+                                      title="Redefinir a senha deste paciente"
+                                      aria-label={`Redefinir a senha de ${pat.name}`}
+                                    >
+                                      <KeyRound className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleImpersonate(pat.id, pat.name)}
+                                      className="p-1.5 rounded-lg bg-[#F9F8F4] hover:bg-amber-100 text-slate-800 hover:text-amber-900 transition-all text-[11px] font-bold cursor-pointer"
+                                      title="Simular este paciente"
+                                      aria-label={`Simular ${pat.name}`}
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -754,6 +797,70 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        title="Redefinir senha"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-[#6D736E] leading-relaxed">
+            Será gerada uma senha temporária para{' '}
+            <strong className="text-[#2C332D]">{resetTarget?.name}</strong>. A senha atual
+            deixa de funcionar e todas as sessões abertas dessa conta são encerradas.
+          </p>
+          <p className="text-sm text-[#6D736E] leading-relaxed">
+            A senha aparecerá uma única vez nesta tela. Repasse-a por um canal seguro e
+            oriente a pessoa a trocá-la no Perfil assim que entrar.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setResetTarget(null)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={handleConfirmReset} isLoading={resetting}>
+              Gerar senha temporária
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!resetResult}
+        onClose={() => setResetResult(null)}
+        title="Senha temporária gerada"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-[#6D736E] leading-relaxed">
+            Conta: <strong className="text-[#2C332D]">{resetResult?.email}</strong>
+          </p>
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-[#F9F8F4] border border-[#7A8B76]/20">
+            <code className="flex-1 text-base font-mono font-bold text-[#2C332D] break-all">
+              {resetResult?.temporaryPassword}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(resetResult?.temporaryPassword ?? '')
+                  .then(() => toast.success('Senha copiada.'))
+                  .catch(() => toast.error('Não foi possível copiar. Selecione e copie manualmente.'));
+              }}
+              title="Copiar senha"
+              aria-label="Copiar senha temporária"
+              className="p-2 rounded-lg hover:bg-white text-[#6D736E] hover:text-[#2C332D] transition-colors cursor-pointer shrink-0"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-[#B54B3C] font-semibold">
+            Esta senha não será exibida novamente. Se fechar sem copiar, gere outra.
+          </p>
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setResetResult(null)}>
+              Entendi
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

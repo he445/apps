@@ -3,11 +3,10 @@ import { Logo } from '../components/Logo';
 import { Button, Card } from '../components/UI';
 
 /**
- * Self-service password reset does not exist yet: there is no endpoint and no e-mail
- * provider configured. This screen used to post to `/auth/forgot-password`, which the
- * API never implemented, so every attempt failed with a generic error after promising
- * the e-mail had been sent. It now states the real situation and points to the route
- * that actually works.
+ * There is no self-service reset: the product has no e-mail provider. Recovery goes
+ * through an administrator, who issues a temporary password from the admin panel.
+ * This screen used to post to `/auth/forgot-password`, an endpoint the API never
+ * implemented, and promised an e-mail that was never sent.
  */
 export default function ForgotPassword() {
   return (
@@ -22,13 +21,12 @@ export default function ForgotPassword() {
         <Card className="shadow-md">
           <div className="flex flex-col gap-5">
             <p className="text-sm text-[#6D736E] leading-relaxed">
-              A redefinição de senha por e-mail ainda não está disponível no Ojanuan.
+              A redefinição automática por e-mail ainda não está disponível no Ojanuan.
             </p>
             <p className="text-sm text-[#6D736E] leading-relaxed">
-              Se você é <strong className="text-[#2C332D]">paciente</strong>, peça ao seu
-              psicólogo para gerar um novo convite de acesso. Se você é{' '}
-              <strong className="text-[#2C332D]">psicólogo(a)</strong>, entre em contato
-              com o administrador da plataforma para redefinir sua senha.
+              Entre em contato com o administrador da plataforma: ele gera uma senha
+              temporária para a sua conta e a envia para você. Ao entrar, troque a senha
+              em <strong className="text-[#2C332D]">Perfil</strong>.
             </p>
 
             <Link to="/login" className="mt-2">
