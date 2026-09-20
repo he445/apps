@@ -27,21 +27,23 @@ web/src/
 │
 ├── pages/
 │   ├── Login.tsx               # Tela de autenticação
-│   ├── Cadastro.tsx            # Cadastro de novo usuário (PROFESSIONAL ou PATIENT)
-│   ├── OnboardingInvite.tsx    # Fluxo de onboarding via convite (/convite/:token)
+│   ├── SignUp.tsx              # Cadastro de novo usuário (PROFESSIONAL ou PATIENT)
+│   ├── OnboardingInvite.tsx    # Fluxo de onboarding via convite (/invite/:token)
 │   ├── ForgotPassword.tsx      # Recuperação de senha (UI)
-│   ├── Perfil.tsx              # Configurações de perfil (ambos os papéis)
+│   ├── Profile.tsx             # Configurações de perfil (ambos os papéis)
 │   │
 │   ├── pro/                    # Telas exclusivas do PROFESSIONAL
 │   │   ├── Dashboard.tsx       # Lista de pacientes, próximas consultas, convites
-│   │   ├── PacienteDetail.tsx  # Detalhe do paciente: histórico, avaliações, guidelines, chat
-│   │   └── Financeiro.tsx      # Histórico financeiro, confirmação de PIX, Carnê-Leão
+│   │   ├── PatientDetail.tsx   # Detalhe do paciente: histórico, avaliações, orientações, chat
+│   │   ├── Finance.tsx         # Histórico financeiro, confirmação de PIX, Carnê-Leão
+│   │   └── Schedule.tsx        # Agenda completa e agendamentos por paciente
 │   │
-│   └── paciente/               # Telas exclusivas do PATIENT
+│   └── patient/                # Telas exclusivas do PATIENT
 │       ├── Dashboard.tsx       # Autoavaliação diária, próxima consulta
-│       ├── Progresso.tsx       # Gráficos de evolução de bem-estar (Recharts)
+│       ├── Progress.tsx        # Gráficos de evolução de bem-estar (Recharts)
 │       ├── Chat.tsx            # Canal de mensagens com o psicólogo
-│       └── Financeiro.tsx      # Histórico de sessões e cobranças
+│       ├── Finance.tsx         # Histórico de sessões e cobranças
+│       └── Schedule.tsx        # Consultas agendadas e solicitações
 │
 ├── hooks/
 │   └── useChatPolling.ts       # Short-polling (3s) de mensagens via GET /chat/messages/sync
@@ -63,24 +65,24 @@ web/src/
 | Rota | Componente | Acesso | Descrição |
 |------|-----------|--------|-----------|
 | `/login` | `Login` | Público | Autenticação |
-| `/cadastro` | `Cadastro` | Público | Cadastro de usuário |
-| `/convite/:token` | `OnboardingInvite` | Público | Onboarding por convite |
-| `/esqueci-minha-senha` | `ForgotPassword` | Público | Solicitação de recuperação de senha |
-| `/perfil` | `Perfil` | Autenticado | Configurações de perfil |
+| `/signup` | `SignUp` | Público | Cadastro de usuário |
+| `/invite/:token` | `OnboardingInvite` | Público | Onboarding por convite |
+| `/forgot-password` | `ForgotPassword` | Público | Informa que a redefinição por e-mail ainda não existe |
+| `/profile` | `Profile` | Autenticado | Configurações de perfil |
 | `/admin/dashboard` | `admin/Dashboard` | ADMIN | Painel Administrativo, métricas, telemetria de rotas, monitor de bugs e sandbox |
 | `/pro/dashboard` | `pro/Dashboard` | PROFESSIONAL | Painel do psicólogo |
-| `/pro/agenda` | `pro/Agenda` | PROFESSIONAL | Agenda completa e agendamentos por paciente |
-| `/pro/paciente/:id` | `PacienteDetail` | PROFESSIONAL | Detalhe de paciente e diário clínico |
-| `/pro/financeiro` | `pro/Financeiro` | PROFESSIONAL | Gestão financeira e Carnê-Leão |
-| `/paciente/dashboard` | `paciente/Dashboard` | PATIENT | Painel do paciente |
-| `/paciente/agenda` | `paciente/Agenda` | PATIENT | Visualização de consultas agendadas e solicitações |
-| `/paciente/progresso` | `paciente/Progresso` | PATIENT | Gráficos de bem-estar |
-| `/paciente/chat` | `Chat` | Autenticado | Chat clínico |
-| `/paciente/financeiro` | `paciente/Financeiro` | PATIENT | Histórico de sessões e PIX |
+| `/pro/schedule` | `pro/Schedule` | PROFESSIONAL | Agenda completa e agendamentos por paciente |
+| `/pro/patient/:id` | `pro/PatientDetail` | PROFESSIONAL | Detalhe de paciente e diário clínico |
+| `/pro/finance` | `pro/Finance` | PROFESSIONAL | Gestão financeira e Carnê-Leão |
+| `/patient/dashboard` | `patient/Dashboard` | PATIENT | Painel do paciente |
+| `/patient/schedule` | `patient/Schedule` | PATIENT | Visualização de consultas agendadas e solicitações |
+| `/patient/progress` | `patient/Progress` | PATIENT | Gráficos de bem-estar |
+| `/patient/chat` | `patient/Chat` | Autenticado | Chat clínico |
+| `/patient/finance` | `patient/Finance` | PATIENT | Histórico de sessões e PIX |
 
 ---
 
-## Serviço de API (`src/services/api.ts`)
+## Serviço de API (`web/src/services/api.ts`)
 
 Instância Axios configurada com:
 
@@ -102,12 +104,12 @@ Detecta sessão expirada e desloga **apenas em rotas protegidas**:
 ```typescript
 // Rotas públicas são imunes ao auto-logout:
 // /auth/invitation, /invitations, /auth/login, /auth/register
-// Páginas públicas: /login, /cadastro, /convite
+// Páginas públicas: /login, /signup, /invite
 ```
 
 ---
 
-## Hook de Chat Polling (`src/hooks/useChatPolling.ts`)
+## Hook de Chat Polling (`web/src/hooks/useChatPolling.ts`)
 
 ```typescript
 const { messages, loading, sendMessage, isPollingActive } = useChatPolling(partnerId);
@@ -127,7 +129,7 @@ const { messages, loading, sendMessage, isPollingActive } = useChatPolling(partn
 **Comportamento**:
 - Polling a cada **3 segundos** via `GET /chat/messages/sync?partnerId=&since=`
 - **Atualização otimista**: mensagem aparece imediatamente na UI, substituída pelo dado real da API
-- **Normalização**: suporta `text`/`messageText` e `timestamp`/`createdAt` (compatível com NestJS e Express mock)
+- **Conversão**: a API devolve `createdAt` (ISO); o hook guarda `timestamp` numérico para ordenar e para servir de cursor `since` do próximo ciclo
 - **Auto-pause**: após 5 falhas consecutivas de rede, o polling é pausado e um toast de erro é exibido
 - **Reativação automática**: retoma ao enviar uma nova mensagem
 
@@ -160,7 +162,7 @@ Primitivos de design system:
 
 ---
 
-## Tipos Globais (`src/types/`)
+## Tipos Globais (`web/src/types/`)
 
 ```typescript
 interface User {
@@ -219,11 +221,11 @@ Psicólogo cria convite
       │ POST /invitations → { token: "ABCD12" }
       │
       ▼
-Paciente recebe link: https://ojanuan.app/convite/ABCD12
+Paciente recebe link: https://ojanuan.app/invite/ABCD12
       │
       ▼
 OnboardingInvite.tsx
-      │ GET /auth/invitation/ABCD12
+      │ GET /auth/invitations/ABCD12
       │ → { patientName, professionalName, expiresAt }
       │
       ▼
@@ -287,14 +289,14 @@ docs: atualiza FRONTEND.md
 ```
 
 ### Adicionando uma nova tela
-1. Crie o arquivo em `src/pages/pro/` ou `src/pages/paciente/`
-2. Adicione a rota em `App.tsx` dentro do `<Routes>` correto
+1. Crie o arquivo em `web/src/pages/pro/` ou `web/src/pages/patient/`
+2. Adicione a rota em `App.tsx` dentro do `<Routes>` correto (caminho em inglês)
 3. Adicione o link na sidebar em `LayoutBase.tsx`
-4. Exporte os tipos necessários em `src/types/`
+4. Exporte os tipos necessários em `web/src/types/`
 
 ### Adicionando um novo endpoint
-1. Adicione a função em `src/services/api.ts` ou use `api.get/post/...` diretamente
-2. Tipar a resposta com interfaces de `src/types/`
+1. Adicione a função em `web/src/services/api.ts` ou use `api.get/post/...` diretamente
+2. Tipar a resposta com interfaces de `web/src/types/`
 3. Tratar erros com `toast.error(err.response?.data?.message || 'Erro desconhecido')`
 
 ---

@@ -10,7 +10,6 @@ import { JwtAuthGuard, Public } from './common/auth';
 import { TelemetryInterceptor } from './common/telemetry.interceptor';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 import { AuthModule } from './auth/auth.module';
-import { InvitationsModule } from './invitations/invitations.module';
 import { CareModule } from './care/care.module';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
@@ -24,7 +23,7 @@ const jwtAudience = 'ojanuan-web';
 @Module({
   imports: [
     // Carrega api/.env e valida tudo no arranque. Sem isto, process.env.JWT_SECRET
-    // ficava indefinido fora de produção e o token era assinado com um segredo fixo.
+    // was undefined outside production and the token was signed with a fixed secret.
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'], validate: validateEnv }),
     PrismaModule,
     EncryptionModule,
@@ -36,13 +35,12 @@ const jwtAudience = 'ojanuan-web';
       global: true,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        // validateEnv já garantiu presença, força e que não é um valor de exemplo público.
+        // validateEnv already checked presence, strength and that it is not a public example.
         secret: config.getOrThrow<string>('jwtSecret'),
         signOptions: { expiresIn: '8h', issuer: jwtIssuer, audience: jwtAudience },
       }),
     }),
     AuthModule,
-    InvitationsModule,
     CareModule,
     UsersModule,
     AdminModule,

@@ -152,7 +152,7 @@ async function runIntegrationSuite() {
         headers: { Authorization: `Bearer ${patAuthToken}` },
       });
       const data: any = await res.json();
-      if (res.status !== 200 || data.psychologistName !== 'Dra. Helena Teste') throw new Error(`Status ${res.status}`);
+      if (res.status !== 200 || data.professionalName !== 'Dra. Helena Teste') throw new Error(`Status ${res.status}`);
     });
 
     // 9. Autoavaliação de Humor
@@ -161,12 +161,12 @@ async function runIntegrationSuite() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${patAuthToken}` },
         body: JSON.stringify({
-          humor_geral: 4,
-          qualidade_sono: 5,
-          nivel_energia: 4,
-          nivel_ansiedade: 2,
-          interacao_social: true,
-          nota: 'Ótimo dia de acompanhamento',
+          moodScore: 4,
+          sleepScore: 5,
+          energyScore: 4,
+          anxietyScore: 2,
+          socialInteraction: true,
+          note: 'Ótimo dia de acompanhamento',
         }),
       });
       const data: any = await res.json();
@@ -225,7 +225,7 @@ async function runIntegrationSuite() {
       const res = await fetch(`${API_BASE}/chat/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${patAuthToken}` },
-        body: JSON.stringify({ receiverId: proId, messageText: 'Olá Dra, mensagem de teste.' }),
+        body: JSON.stringify({ receiverId: proId, text: 'Olá Dra, mensagem de teste.' }),
       });
       const data: any = await res.json();
       if (res.status !== 201 || !data.id) throw new Error(`Status ${res.status}`);

@@ -17,7 +17,7 @@ class UpdateProfileDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsString() currentPassword?: string;
-  // Alinhado ao cadastro (8): antes era possível enfraquecer a própria senha após entrar.
+  // Matches sign-up (8): it used to be possible to weaken your own password after login.
   @IsOptional() @IsString() @MinLength(8) newPassword?: string;
   @IsOptional() @IsString() cpf?: string;
   @IsOptional() @IsString() crp?: string;
@@ -61,7 +61,7 @@ class UsersService {
           fullName: 'Titular excluído',
           password: '',
           email: `deleted-${user.sub}@anonymized.invalid`,
-          // Mantém CPF, CRP, address e ID intactos conforme regra fiscal do ADD 5.5
+          // Keeps CPF, CRP, address and ID intact, as the tax retention rule requires.
         },
       }),
     ]);
@@ -107,8 +107,8 @@ class UsersService {
         ...(nameToUpdate && { fullName: nameToUpdate }),
         ...(newEmail && { email: newEmail }),
         ...(newPasswordHash && { password: newPasswordHash }),
-        // Tokens novos carregam esta versão; os antigos, emitidos antes da
-        // migração, continuam válidos até sua expiração normal de 8 horas.
+        // New tokens carry this version; older ones, issued before the migration,
+        // stay valid until their normal 8-hour expiry.
         ...(credentialsChanged && { tokenVersion: { increment: 1 } }),
         ...(dto.cpf !== undefined && { cpf: dto.cpf }),
         ...(dto.crp !== undefined && { crp: dto.crp }),

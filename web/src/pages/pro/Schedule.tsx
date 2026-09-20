@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { Button, Card, Skeleton } from '../../components/UI';
-import { ModalAgendamento } from '../../components/ModalAgendamento';
+import { ScheduleModal } from '../../components/ScheduleModal';
 import { toast } from 'sonner';
 import {
   Calendar as CalendarIcon,
@@ -41,7 +41,7 @@ interface Consultation {
   };
 }
 
-export default function AgendaPro() {
+export default function ProfessionalSchedule() {
   const [loading, setLoading] = useState(true);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -424,8 +424,8 @@ export default function AgendaPro() {
         )}
       </div>
 
-      {/* Modal Agendamento */}
-      <ModalAgendamento
+      {/* Scheduling modal */}
+      <ScheduleModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchConsultations}

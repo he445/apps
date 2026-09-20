@@ -51,8 +51,6 @@ api/src/
 │   └── prisma.service.ts   # PrismaService + PrismaModule
 ├── auth/
 │   └── auth.module.ts      # Registro, login, preview de convite
-├── invitations/
-│   └── invitations.module.ts  # Criação e aceitação de convites
 ├── care/
 │   └── care.module.ts      # Consultas, avaliações, guidelines, chat, relatórios
 ├── users/
@@ -111,19 +109,27 @@ Resposta `200`:
 
 ---
 
-### 🔐 Invitations (parcialmente público)
+### 🔐 Convites
+
+Os convites são servidos pelo módulo `care/`. Existia um módulo `invitations/` separado
+com uma segunda implementação das mesmas operações, que nenhum cliente chamava; ele foi
+removido.
 
 | Método | Rota | Auth | Descrição |
 |--------|------|------|-----------|
-| `POST` | `/invitations` | JWT (PROFESSIONAL) | Criar convite |
-| `GET` | `/invitations/:token` | Público | Visualizar convite |
-| `POST` | `/invitations/:token/accept` | Público | Aceitar convite e criar conta |
+| `POST` | `/care/professional/invitations` | JWT (PROFESSIONAL) | Gerar um novo link de convite |
+| `GET` | `/auth/invitations/:token` | Público | Pré-visualizar um convite |
+| `POST` | `/care/patient/invitations/accept` | JWT (PATIENT) | Aceitar convite e trocar de profissional |
 
-**POST `/invitations`** — Body:
+**POST `/care/professional/invitations`** — sem body. Resposta `201`:
 ```json
-{ "patientName": "João Silva" }
+{
+  "inviteCode": "token-url-safe-de-256-bits",
+  "inviteLink": "https://app.exemplo/invite/token-url-safe-de-256-bits"
+}
 ```
-Resposta `201`: objeto `PatientInvitation` com `token` de 6 caracteres e validade de 7 dias.
+Token de uso único, validade de 7 dias. O convite anterior segue válido, para não
+quebrar links já enviados.
 
 ---
 
@@ -158,20 +164,23 @@ Resposta `201`: objeto `PatientInvitation` com `token` de 6 caracteres e validad
 | `POST` | `/assessments` | PATIENT | Registrar autoavaliação |
 | `GET` | `/assessments/:patientId` | Ambos | Listar avaliações de um paciente |
 
-**POST `/assessments`** — Aceita campos em **português ou inglês**:
+**POST `/assessments`** — Body:
 ```json
 {
-  "humor_geral": 4,
-  "qualidade_sono": 3,
-  "nivel_energia": 4,
-  "nivel_ansiedade": 2,
-  "interacao_social": true,
-  "nota": "Semana difícil mas melhorei"
+  "moodScore": 4,
+  "sleepScore": 3,
+  "energyScore": 4,
+  "anxietyScore": 2,
+  "socialInteraction": true,
+  "note": "Semana difícil mas melhorei"
 }
 ```
-ou equivalente em inglês (`moodScore`, `sleepScore`, `energyScore`, `anxietyScore`, `socialInteraction`, `quickNote`).
+Todos os campos são opcionais; os não informados assumem valor neutro. `note` (máx. 150
+caracteres) fica cifrado em repouso.
 
-Resposta inclui `indice_bem_estar` calculado automaticamente (0–100).
+A resposta devolve os mesmos campos mais `wellbeingIndex` (escala 1–5, calculado com a
+ansiedade invertida) e `date`. Uma segunda chamada no mesmo dia atualiza o registro
+daquele dia em vez de criar outro.
 
 ---
 
@@ -206,17 +215,18 @@ rótulo genérico "Orientação recebida".
 **POST `/chat/messages`** — Body:
 ```json
 {
-  "receiverId": "cuid-do-destinatario",
-  "text": "Olá, como você está?",
-  "messageText": "Olá, como você está?"  // alias aceito
+  "receiverId": "uuid-do-destinatario",
+  "text": "Olá, como você está?"
 }
 ```
 
 **GET `/chat/messages/sync`** — Query params:
 ```
-?partnerId=cuid&since=1700000000000
+?partnerId=uuid&since=1700000000000
 ```
-Retorna mensagens mais recentes que `since` (timestamp Unix ms). Resposta inclui `{ text, messageText, timestamp, createdAt }` para máxima compatibilidade.
+Retorna as mensagens mais recentes que `since` (timestamp Unix em ms). Cada mensagem vem
+como `{ id, senderId, receiverId, text, isRead, createdAt }` — `text` já decifrado, sem
+nenhuma coluna de ciphertext.
 
 ---
 

@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -27,10 +22,10 @@ export default function Login() {
     try {
       await login(email, password);
       toast.success('Login realizado com sucesso!');
-      // Sem navegação manual aqui de propósito: esta tela já está envolvida por
+      // No manual navigation here on purpose: this screen is already wrapped by
       // <PublicRoute> (src/App.tsx), que observa isAuthenticated/user.role do
       // AuthContext e redireciona sozinha assim que o login altera esse estado —
-      // o mesmo mecanismo usado por qualquer outra rota pública. Reler e fazer
+      // the same mechanism every other public route uses. Re-reading storage and
       // JSON.parse do sessionStorage aqui era redundante e, se falhasse, exibia
       // "senha incorreta" para um login que na verdade tinha dado certo.
     } catch (err: any) {
@@ -83,7 +78,7 @@ export default function Login() {
               />
               <div className="text-right">
                 <Link 
-                  to="/esqueci-minha-senha" 
+                  to="/forgot-password" 
                   className="text-xs font-semibold text-[#C16E59] hover:underline"
                 >
                   Esqueceu sua senha?
@@ -106,7 +101,7 @@ export default function Login() {
           <div className="text-center">
             <p className="text-sm text-[#2C332D]">
               Não tem uma conta?{' '}
-              <Link to="/cadastro" className="font-bold text-[#7A8B76] hover:underline">
+              <Link to="/signup" className="font-bold text-[#7A8B76] hover:underline">
                 Cadastre-se aqui
               </Link>
             </p>

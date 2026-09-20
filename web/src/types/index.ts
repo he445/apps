@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 export type UserRole = 'PROFESSIONAL' | 'PATIENT' | 'ADMIN';
 
 export interface User {
@@ -24,15 +19,26 @@ export interface MoodEntry {
   id: string;
   userId: string;
   date: string; // YYYY-MM-DD
-  humor_geral: number; // 1-5
-  qualidade_sono: number; // 1-5
-  nivel_energia: number; // 1-5
-  nivel_ansiedade: number; // 1-5
-  interacao_social: boolean;
-  nota?: string;
-  indice_bem_estar: number;
+  moodScore: number; // 1-5
+  sleepScore: number; // 1-5
+  energyScore: number; // 1-5
+  anxietyScore: number; // 1-5
+  socialInteraction: boolean;
+  note?: string;
+  wellbeingIndex: number;
 }
 
+/** A chat message exactly as the API returns it. */
+export interface ApiChatMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  text: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** The same message once the chat hook has it: `createdAt` as a sortable number. */
 export interface ChatMessage {
   id: string;
   senderId: string;
@@ -41,7 +47,7 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export interface Orientation {
+export interface Guideline {
   id: string;
   patientId: string;
   title: string;
@@ -61,8 +67,8 @@ export interface Session {
 
 export interface InviteInfo {
   token: string;
-  psychologistId: string;
-  psychologistName: string;
+  professionalId: string;
+  professionalName: string;
 }
 
 // --- ADMIN & TELEMETRY TYPES ---

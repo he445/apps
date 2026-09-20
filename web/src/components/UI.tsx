@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 
@@ -62,7 +57,7 @@ export const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   // Math.random() era reavaliado a cada render: o htmlFor do label e o id do input
-  // mudavam juntos a cada ciclo, quebrando a associação que leitores de tela usam.
+  // changed together on every cycle, breaking the association screen readers rely on.
   const generatedId = React.useId();
   const inputId = id || generatedId;
   return (

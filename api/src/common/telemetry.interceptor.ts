@@ -54,14 +54,14 @@ export class TelemetryService {
   private static recentErrors: ErrorLogEntry[] = [];
   private static readonly MAX_ERRORS = 100;
   /**
-   * Teto de rotas distintas rastreadas. O projeto tem ~33 rotas; o excedente só
-   * aparece se a normalização deixar passar algo variável, e aí o Map não pode
+   * Cap on distinct tracked routes. The project has ~33; anything beyond that only
+   * shows up if normalisation lets something variable through, and then the Map cannot
    * crescer sem limite dentro de um processo de vida longa.
    */
   private static readonly MAX_ROUTES = 200;
   private static totalRequests = 0;
 
-  /** Descarta a rota chamada há mais tempo para manter o Map dentro do teto. */
+  /** Drops the least recently called route to keep the Map under the cap. */
   private static evictOldestRoute() {
     let oldestKey: string | null = null;
     let oldestAt = Infinity;
@@ -167,14 +167,14 @@ export class TelemetryService {
   }
 
   /**
-   * Reduz a URL a um template estável. Além de agrupar as estatísticas, isto é um
-   * controle de segurança: tokens de convite são segredos de uso único e não podem
+   * Reduces the URL to a stable template. Besides grouping statistics this is a
+   * security control: invitation tokens are single-use secrets and must not
    * virar chave do Map — de onde vazariam para GET /admin/telemetry/routes.
    *
-   * A última regra é a rede de proteção: qualquer segmento longo o bastante para ser
-   * identificador ou segredo (o token de convite tem 43 caracteres) é descartado,
-   * mesmo que não case com os formatos conhecidos. Nomes reais de rota no projeto
-   * têm no máximo 13 caracteres ("consultations"), bem abaixo do limite.
+   * The last rule is the safety net: any segment long enough to be an identifier or a
+   * secret (the invitation token is 43 characters) is dropped even when it matches no
+   * known format. Real route names in this project are at most 13 characters
+   * ("consultations"), comfortably under the limit.
    */
   private static normalizePath(path: string): string {
     return path

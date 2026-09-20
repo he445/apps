@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { api } from '../services/api';
@@ -174,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (targetUser.role === 'PROFESSIONAL') {
         window.location.assign('/pro/dashboard');
       } else {
-        window.location.assign('/paciente/dashboard');
+        window.location.assign('/patient/dashboard');
       }
     }
   };
@@ -186,9 +181,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedAdminUser = window.sessionStorage.getItem(STORAGE_KEYS.adminUser);
 
     if (savedAdminToken && savedAdminUser) {
-      // Sem esta proteção, um storage corrompido lançava aqui e deixava o admin
-      // preso na simulação sem saída — e ErrorBoundary não captura erro em
-      // handler de evento, só em render. Degradar para logout sempre dá uma saída.
+      // Without this guard a corrupted storage threw here and left the admin stuck
+      // inside the simulation with no way out — and ErrorBoundary does not catch
+      // errors in event handlers, only in render. Falling back to logout always
+      // leaves an exit.
       let parsedAdmin: User;
       try {
         parsedAdmin = JSON.parse(savedAdminUser) as User;

@@ -1,11 +1,6 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { ChatMessage } from '../types';
+import { ApiChatMessage, ChatMessage } from '../types';
 import { toast } from 'sonner';
 
 const MIN_POLL_MS = 3000;
@@ -18,28 +13,22 @@ export function useChatPolling(partnerId: string | null) {
   const activeRef = useRef(true);
   const consecutiveFailures = useRef(0);
   const lastTimestampRef = useRef<number>(0);
-  // Intervalo adaptativo: conversa parada não precisa de uma ida ao banco a cada
-  // 3 s. Sobe até MAX a cada ciclo vazio e volta a MIN assim que algo acontece.
+  // Adaptive interval: an idle conversation does not need a database round trip every
+  // 3s. Backs off towards MAX on each empty cycle and snaps back to MIN on activity.
   const idleDelayRef = useRef<number>(MIN_POLL_MS);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Helper to normalize message format from NestJS or Express
-  const normalizeMessage = (raw: any): ChatMessage => {
-    const text = raw.text || raw.messageText || '';
-    const ts = typeof raw.timestamp === 'number'
-      ? raw.timestamp
-      : raw.createdAt
-        ? new Date(raw.createdAt).getTime()
-        : Date.now();
-
-    return {
-      id: raw.id,
-      senderId: raw.senderId,
-      receiverId: raw.receiverId,
-      text,
-      timestamp: ts,
-    };
-  };
+  /**
+   * `createdAt` becomes a numeric timestamp here because the hook sorts messages and
+   * uses the newest one as the `since` cursor for the next poll.
+   */
+  const toMessage = (raw: ApiChatMessage): ChatMessage => ({
+    id: raw.id,
+    senderId: raw.senderId,
+    receiverId: raw.receiverId,
+    text: raw.text,
+    timestamp: new Date(raw.createdAt).getTime(),
+  });
 
   // Synchronize messages
   const fetchMessages = async (isFirstLoad = false) => {
@@ -53,12 +42,12 @@ export function useChatPolling(partnerId: string | null) {
         },
       });
 
-      const rawMessages: any[] = Array.isArray(response.data) ? response.data : [];
-      const newMessages: ChatMessage[] = rawMessages.map(normalizeMessage);
+      const rawMessages: ApiChatMessage[] = Array.isArray(response.data) ? response.data : [];
+      const newMessages: ChatMessage[] = rawMessages.map(toMessage);
       consecutiveFailures.current = 0; // reset failures on success
 
       if (newMessages.length > 0) {
-        idleDelayRef.current = MIN_POLL_MS; // houve atividade: volta ao ritmo rápido
+        idleDelayRef.current = MIN_POLL_MS; // activity: back to the fast cadence
         // Find the maximum timestamp in the batch to update our ref
         const maxTs = Math.max(...newMessages.map((m) => m.timestamp));
         lastTimestampRef.current = maxTs;
@@ -101,8 +90,8 @@ export function useChatPolling(partnerId: string | null) {
     idleDelayRef.current = MIN_POLL_MS;
     fetchMessages(true);
 
-    // Aba oculta não consulta nada. Antes o polling seguia rodando em segundo
-    // plano, mantendo o banco acordado e queimando cota com a aba esquecida.
+    // A hidden tab polls nothing. Polling used to keep running in the background,
+    // holding the database awake and burning quota on a forgotten tab.
     const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 
     const scheduleNext = () => {
@@ -111,7 +100,7 @@ export function useChatPolling(partnerId: string | null) {
           const before = lastTimestampRef.current;
           await fetchMessages(false);
           if (lastTimestampRef.current === before) {
-            // Ciclo vazio: afrouxa o intervalo até o teto.
+            // Empty cycle: relax the interval towards the ceiling.
             idleDelayRef.current = Math.min(idleDelayRef.current * 1.5, MAX_POLL_MS);
           }
         }
@@ -121,7 +110,7 @@ export function useChatPolling(partnerId: string | null) {
 
     const onVisibility = () => {
       if (isVisible()) {
-        // Ao voltar para a aba, busca imediatamente e retoma o ritmo rápido.
+        // Back on the tab: fetch immediately and resume the fast cadence.
         idleDelayRef.current = MIN_POLL_MS;
         if (activeRef.current) fetchMessages(false);
       }
@@ -145,18 +134,18 @@ export function useChatPolling(partnerId: string | null) {
       consecutiveFailures.current = 0;
     }
 
-    // Enviar é o sinal mais forte de conversa ativa: volta ao ritmo rápido para
-    // que a resposta do outro lado não fique presa no teto do backoff.
+    // Sending is the strongest signal of an active conversation: reset to the fast
+    // cadence so the reply is not stuck waiting at the backoff ceiling.
     idleDelayRef.current = MIN_POLL_MS;
 
     const tempId = `temp-${Date.now()}`;
-    // JSON.parse sem proteção derrubava o envio se o storage estivesse corrompido.
+    // An unguarded JSON.parse broke sending whenever the storage was corrupted.
     let senderId = 'me';
     try {
       const loggedInUser = window.sessionStorage.getItem('ojanuan_user');
       if (loggedInUser) senderId = JSON.parse(loggedInUser).id ?? 'me';
     } catch {
-      // Mantém o placeholder: só afeta o alinhamento visual da bolha otimista.
+      // Keeps the placeholder: this only affects how the optimistic bubble aligns.
     }
 
     const optimisticMsg: ChatMessage = {
@@ -170,13 +159,8 @@ export function useChatPolling(partnerId: string | null) {
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
-      const response = await api.post('/chat/messages', {
-        receiverId: partnerId,
-        text,
-        messageText: text,
-      });
-
-      const realMsg = normalizeMessage(response.data);
+      const response = await api.post('/chat/messages', { receiverId: partnerId, text });
+      const realMsg = toMessage(response.data);
 
       setMessages((prev) =>
         prev.map((m) => (m.id === tempId ? realMsg : m))

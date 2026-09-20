@@ -34,8 +34,8 @@ export class JwtAuthGuard implements CanActivate {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) throw new UnauthorizedException('Token ausente.');
     try {
-      // Não exige issuer/audience aqui para preservar sessões emitidas antes do
-      // reforço. Tokens novos já recebem esses claims ao serem assinados.
+      // Does not require issuer/audience here, to keep sessions issued before the
+      // hardening alive. Newly signed tokens already carry those claims.
       const payload = await this.jwt.verifyAsync<JwtUser>(token);
       if (!payload.sub || !payload.email) {
         throw new UnauthorizedException('Token inválido.');

@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { Button, Card, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
@@ -11,8 +6,6 @@ import {
   CreditCard, 
   Copy, 
   Check, 
-  HelpCircle, 
-  DollarSign, 
   Calendar, 
   FileCheck,
   CheckCircle2,
@@ -27,7 +20,7 @@ interface Session {
   price: number;
 }
 
-export default function FinanceiroPaciente() {
+export default function PatientFinance() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [pixKey, setPixKey] = useState('');
   const [loading, setLoading] = useState(true);

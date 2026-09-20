@@ -1,7 +1,7 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, GoneException, HttpCode, HttpStatus, Injectable, Module, NotFoundException, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, GoneException, HttpCode, HttpStatus, Injectable, Module, Param, Post, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { InvitationStatus, Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
@@ -41,8 +41,8 @@ class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    // Contas administrativas são provisionadas exclusivamente por operação
-    // controlada (seed/CLI); aceitar este papel na rota pública é escalada de privilégio.
+    // Administrator accounts are provisioned only through a controlled operation
+    // (seed/CLI); accepting that role on the public route would be privilege escalation.
     if (dto.role === Role.ADMIN) {
       throw new ForbiddenException('Contas administrativas não podem ser criadas pelo cadastro público.');
     }
@@ -58,14 +58,13 @@ class AuthService {
       if (exists) throw new ConflictException('E-mail já cadastrado.');
 
       let professionalId: string | null = null;
-      let invitationId: string | null = null;
 
       if (dto.role === Role.PATIENT && inviteCode) {
         const invitation = await tx.patientInvitation.findUnique({
           where: { token: inviteCode },
         });
-        // Convites novos são de uso único. Os códigos curtos já emitidos
-        // permanecem aceitos até expirarem para não interromper onboarding em curso.
+        // New invitations are single-use. Short codes already issued stay accepted
+        // until they expire, so onboarding in progress is not interrupted.
         const isLegacyInvitation = invitation?.token.length === 6;
         if (
           !invitation ||
@@ -75,8 +74,6 @@ class AuthService {
           throw new GoneException('Convite inválido ou expirado.');
         }
         professionalId = invitation.professionalId;
-        invitationId = invitation.id;
-
         if (!isLegacyInvitation) {
           const claim = await tx.patientInvitation.updateMany({
             where: { id: invitation.id, status: InvitationStatus.PENDING },
@@ -192,19 +189,12 @@ class AuthController {
   }
 
   @Public()
-  @Get('invitation/:token')
-  @ApiOperation({ summary: 'Pré-visualizar convite', description: 'Retorna dados do convite (nome do psicólogo, nome do paciente, validade) sem exigir autenticação.' })
-  @ApiResponse({ status: 200, description: 'Dados do convite.' })
-  @ApiResponse({ status: 404, description: 'Convite não encontrado.' })
-  @ApiResponse({ status: 410, description: 'Convite expirado ou já utilizado.' })
-  previewInvitation(@Param('token') token: string) {
-    return this.auth.previewInvitation(token);
-  }
-
-  @Public()
   @Get('invitations/:token')
-  @ApiOperation({ summary: 'Pré-visualizar convite pelo caminho alternativo', description: 'Compatibilidade com a rota usada no onboarding do paciente.' })
-  previewInvitationAlias(@Param('token') token: string) {
+  @ApiOperation({ summary: 'Preview an invitation', description: 'Returns the invitation data (professional name, patient name, expiry) without requiring authentication.' })
+  @ApiResponse({ status: 200, description: 'Invitation data.' })
+  @ApiResponse({ status: 404, description: 'Invitation not found.' })
+  @ApiResponse({ status: 410, description: 'Invitation expired or already used.' })
+  previewInvitation(@Param('token') token: string) {
     return this.auth.previewInvitation(token);
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { Button, Card, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
@@ -11,7 +11,6 @@ import {
   CheckCircle,
   ShieldCheck,
   Tag,
-  DollarSign,
 } from 'lucide-react';
 
 interface Consultation {
@@ -26,10 +25,10 @@ interface Consultation {
   };
 }
 
-export default function AgendaPaciente() {
+export default function PatientSchedule() {
   const [loading, setLoading] = useState(true);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
-  const [psychologistName, setPsychologistName] = useState<string>('');
+  const [professionalName, setPsychologistName] = useState<string>('');
 
   const fetchConsultations = async () => {
     setLoading(true);
@@ -39,7 +38,7 @@ export default function AgendaPaciente() {
         api.get('/care/patient/dashboard'),
       ]);
       setConsultations(consultationsRes.data || []);
-      setPsychologistName(dashboardRes.data?.psychologistName || 'Seu Psicólogo');
+      setPsychologistName(dashboardRes.data?.professionalName || 'Seu Psicólogo');
     } catch (err) {
       console.error(err);
       toast.error('Erro ao carregar agenda.');
@@ -127,7 +126,7 @@ export default function AgendaPaciente() {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-bold text-[#2C332D]">
-            Atendimento com {psychologistName}
+            Atendimento com {professionalName}
           </span>
           <span className="text-xs text-[#6D736E] leading-relaxed">
             Seus agendamentos são gerenciados diretamente pelo seu psicólogo. Em caso de dúvidas sobre reagendamento, entre em contato via Chat.
@@ -178,7 +177,7 @@ export default function AgendaPaciente() {
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-base text-[#2C332D]">
-                          Sessão com {c.professional?.fullName || psychologistName}
+                          Sessão com {c.professional?.fullName || professionalName}
                         </span>
                         {getStatusBadge(c.status)}
                       </div>

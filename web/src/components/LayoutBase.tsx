@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +23,7 @@ interface LayoutBaseProps {
 }
 
 export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
-  const { user, logout, isProfessional, isPatient, isAdmin } = useAuth();
+  const { user, logout, isProfessional, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -44,8 +39,8 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
         // Silent catch if server down or offline
       }
     };
-    // Aba oculta não consulta: antes o badge seguia batendo no banco a cada 12 s
-    // com a aba em segundo plano, impedindo a suspensão automática do Neon.
+    // A hidden tab does not poll: the badge used to hit the database every 12s with
+    // the tab in the background, blocking Neon's auto-suspend.
     const isVisible = () => document.visibilityState === 'visible';
     const tick = () => { if (isVisible()) checkUnread(); };
 
@@ -68,23 +63,23 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
   // Navigation Items per Role
   const adminNavigation = [
     { name: 'Admin Hub', path: '/admin/dashboard', icon: Sliders, hasBadge: false },
-    { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
+    { name: 'Perfil', path: '/profile', icon: User, hasBadge: false },
   ];
 
   const proNavigation = [
     { name: 'Pacientes', path: '/pro/dashboard', icon: Users, hasBadge: false },
-    { name: 'Agenda', path: '/pro/agenda', icon: Calendar, hasBadge: false },
-    { name: 'Financeiro', path: '/pro/financeiro', icon: DollarSign, hasBadge: false },
-    { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
+    { name: 'Agenda', path: '/pro/schedule', icon: Calendar, hasBadge: false },
+    { name: 'Financeiro', path: '/pro/finance', icon: DollarSign, hasBadge: false },
+    { name: 'Perfil', path: '/profile', icon: User, hasBadge: false },
   ];
 
   const patientNavigation = [
-    { name: 'Início', path: '/paciente/dashboard', icon: Home, hasBadge: false },
-    { name: 'Agenda', path: '/paciente/agenda', icon: Calendar, hasBadge: false },
-    { name: 'Progresso', path: '/paciente/progresso', icon: TrendingUp, hasBadge: false },
-    { name: 'Chat', path: '/paciente/chat', icon: MessageSquare, hasBadge: hasUnreadMessages },
-    { name: 'Financeiro', path: '/paciente/financeiro', icon: DollarSign, hasBadge: false },
-    { name: 'Perfil', path: '/perfil', icon: User, hasBadge: false },
+    { name: 'Início', path: '/patient/dashboard', icon: Home, hasBadge: false },
+    { name: 'Agenda', path: '/patient/schedule', icon: Calendar, hasBadge: false },
+    { name: 'Progresso', path: '/patient/progress', icon: TrendingUp, hasBadge: false },
+    { name: 'Chat', path: '/patient/chat', icon: MessageSquare, hasBadge: hasUnreadMessages },
+    { name: 'Financeiro', path: '/patient/finance', icon: DollarSign, hasBadge: false },
+    { name: 'Perfil', path: '/profile', icon: User, hasBadge: false },
   ];
 
   const currentNav = isAdmin ? adminNavigation : isProfessional ? proNavigation : patientNavigation;
@@ -121,7 +116,7 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
   const getHomeRoute = () => {
     if (isAdmin) return '/admin/dashboard';
     if (isProfessional) return '/pro/dashboard';
-    return '/paciente/dashboard';
+    return '/patient/dashboard';
   };
 
   return (
@@ -144,9 +139,9 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
               {currentNav.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = location.pathname === tab.path || 
-                  (tab.path === '/pro/dashboard' && location.pathname.startsWith('/pro/paciente/'));
+                  (tab.path === '/pro/dashboard' && location.pathname.startsWith('/pro/patient/'));
                 const isChatTab = tab.name === 'Chat';
-                const showBadge = isChatTab && hasUnreadMessages && location.pathname !== '/paciente/chat';
+                const showBadge = isChatTab && hasUnreadMessages && location.pathname !== '/patient/chat';
                 
                 return (
                   <button
@@ -240,9 +235,9 @@ export const LayoutBase: React.FC<LayoutBaseProps> = ({ children }) => {
           {currentNav.map((tab) => {
             const Icon = tab.icon;
             const isActive = location.pathname === tab.path || 
-              (tab.path === '/pro/dashboard' && location.pathname.startsWith('/pro/paciente/'));
+              (tab.path === '/pro/dashboard' && location.pathname.startsWith('/pro/patient/'));
             const isChatTab = tab.name === 'Chat';
-            const showBadge = isChatTab && hasUnreadMessages && location.pathname !== '/paciente/chat';
+            const showBadge = isChatTab && hasUnreadMessages && location.pathname !== '/patient/chat';
 
             return (
               <button

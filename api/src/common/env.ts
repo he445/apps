@@ -1,10 +1,10 @@
 /**
- * Validação centralizada das variáveis de ambiente.
+ * Centralised environment variable validation.
  *
  * Antes desta camada nenhum ponto da API carregava o `.env`: `process.env.JWT_SECRET`
  * ficava indefinido em desenvolvimento e o token era assinado com um segredo fixo
- * presente no código-fonte. A validação roda no arranque, uma única vez, e derruba
- * o processo se algo obrigatório estiver ausente ou fraco.
+ * hardcoded in the source. Validation runs once at boot and kills the process if
+ * anything required is missing or weak.
  */
 
 import { buildKeyring } from './encryption.service';
@@ -14,19 +14,19 @@ export type AppEnv = {
   isProd: boolean;
   port: number;
   jwtSecret: string;
-  /** Origem canônica do frontend. Usada para montar links (convite, e-mails). */
+  /** Canonical web origin. Also used to build links (invitations, e-mails). */
   webOrigin: string;
-  /** Origens autorizadas no CORS. Inclui a canônica mais quaisquer previews. */
+  /** Origins allowed by CORS: the canonical one plus any preview deployments. */
   corsOrigins: string[];
-  /** Versão da chave usada para gravar conteúdo clínico cifrado. */
+  /** Key version used when writing encrypted clinical content. */
   encryptionKeyVersion: number;
 };
 
 const MIN_JWT_SECRET_LENGTH = 32;
 
 /**
- * Segredos que já circularam em repositório ou documentação e nunca podem
- * voltar a assinar um token, mesmo que alguém os defina explicitamente.
+ * Secrets that have appeared in the repository or documentation and must never sign
+ * a token again, even if someone sets them on purpose.
  */
 const FORBIDDEN_SECRETS = new Set([
   'development-only-secret',
@@ -56,9 +56,9 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     errors.push(`JWT_SECRET precisa de ao menos ${MIN_JWT_SECRET_LENGTH} caracteres (recebido: ${jwtSecret.length}).`);
   }
 
-  // WEB_ORIGIN é a origem canônica e deve conter UMA única URL: ela também monta o
-  // link de convite, e uma lista separada por vírgula produziria um link quebrado.
-  // Origens extras (previews) vão em CORS_ORIGINS, que só afeta o CORS.
+  // WEB_ORIGIN is the canonical origin and must hold a SINGLE URL: it also builds the
+  // invitation link, and a comma-separated list would produce a broken one. Extra
+  // origins (previews) belong in CORS_ORIGINS, which only affects CORS.
   const webOrigin = (source.WEB_ORIGIN ?? '').trim().replace(/\/$/, '');
   if (isProd && !webOrigin) {
     errors.push('WEB_ORIGIN é obrigatória em produção (URL canônica do frontend).');
@@ -78,9 +78,9 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     errors.push(`PORT inválida: "${source.PORT}".`);
   }
 
-  // Conteúdo clínico é cifrado em nível de aplicação. Sem chave válida a API
-  // gravaria dado sensível em texto claro — falhar no arranque é preferível a
-  // degradar em silêncio. buildKeyring valida tamanho, formato e valores de exemplo.
+  // Clinical content is encrypted at the application level. Without a valid key the
+  // API would write sensitive data in plaintext, so failing at boot beats degrading
+  // silently. buildKeyring checks length, format and known example values.
   let encryptionKeyVersion = 1;
   try {
     encryptionKeyVersion = buildKeyring(source).activeVersion;

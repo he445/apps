@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  Body,
   Controller,
   Delete,
   ForbiddenException,
@@ -17,18 +15,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BillingType, ConsultationStatus, PaymentStatus, Role } from '@prisma/client';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser, Roles, RolesGuard } from '../common/auth';
 import { EncryptionModule, EncryptionService } from '../common/encryption.service';
 import { PrismaModule, PrismaService } from '../common/prisma.service';
 import { TelemetryService } from '../common/telemetry.interceptor';
-
-class PlaygroundRequestDto {
-  @IsString() @IsNotEmpty() method!: string;
-  @IsString() @IsNotEmpty() path!: string;
-  @IsOptional() body?: any;
-}
 
 @Injectable()
 export class AdminService {
@@ -244,15 +235,14 @@ export class AdminService {
   }
 
   /**
-   * Gerar/limpar massa de teste e a impersonação de contas de teste (mais abaixo)
-   * são gated apenas por @Roles(Role.ADMIN) no controller — o mesmo nível de
-   * confiança de qualquer outra capacidade deste painel (overview, telemetria).
-   * Nunca tocam usuário real: só criam/apagam linhas com isTestUser: true, e
-   * cada chamada grava em AuditLog quem foi. Uma variável de ambiente extra só
-   * para estas duas rotas já foi cogitada e descartada de propósito — um admin
-   * autenticado já é o limite de confiança do sistema; adicionar uma segunda
-   * trava aqui e em nenhum outro lugar do painel era inconsistente, não mais
-   * seguro.
+   * Seeding/clearing demo data and impersonating test accounts (below) are gated by
+   * @Roles(Role.ADMIN) on the controller alone — the same level of trust as every
+   * other capability in this panel (overview, telemetry). They never touch a real
+   * user: they only create or delete rows with isTestUser: true, and each call records
+   * the actor in AuditLog. An extra environment variable guarding just these two
+   * routes was considered and dropped on purpose: an authenticated admin is already
+   * the system's trust boundary, and a second lock here and nowhere else in the panel
+   * was inconsistent rather than safer.
    */
   async seedSandbox(admin: JwtUser) {
     const timestamp = Date.now();
@@ -386,8 +376,8 @@ export class AdminService {
       });
 
       // 6. Create Guidelines
-      // Grava como as rotas reais gravam, para a massa de teste ter a mesma forma
-      // dos dados de produção (texto claro e cifrado convivem até a Release B).
+      // Writes the way the real routes write, so the demo data has the same
+      // shape as production data (plaintext and ciphertext coexist until Release B).
       const orientacao = 'Praticar o exercício de respiração diafragmática 5 minutos antes de dormir.';
       await tx.guideline.create({
         data: {

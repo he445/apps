@@ -1,37 +1,40 @@
 import { Global, Injectable, Module } from '@nestjs/common';
-import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 /**
- * Criptografia de campos clínicos em nível de aplicação.
+ * Application-level encryption for clinical fields.
  *
- * Conteúdo terapêutico — conversas do chat, diário emocional e orientações — é
- * dado pessoal sensível (LGPD art. 5º, II). Sem esta camada, qualquer pessoa com
- * acesso de leitura ao banco, a um backup ou a uma connection string vazada lê o
- * prontuário inteiro em texto puro.
+ * Therapeutic content — chat conversations, the emotional diary and guidelines — is
+ * sensitive personal data (LGPD art. 5, II). Without this layer, anyone with read
+ * access to the database, to a backup or to a leaked connection string reads the whole
+ * record in plaintext.
  *
- * AES-256-GCM, escolhido por ser modo autenticado: além de proteger o conteúdo,
- * detecta adulteração do ciphertext (o decrypt lança em vez de devolver lixo).
- * Usa apenas o módulo `crypto` nativo do Node — nenhuma dependência nova.
+ * AES-256-GCM, chosen because it is an authenticated mode: besides protecting the
+ * content it detects tampering with the ciphertext (decrypt throws instead of
+ * returning garbage). Uses only Node's built-in `crypto` — no new dependency.
  *
- * Formato armazenado: base64(iv ‖ authTag ‖ ciphertext), com a versão da chave
- * numa coluna separada. Custo medido: ~20 µs para cifrar e ~10 µs para decifrar
- * uma mensagem de 500 caracteres.
+ * Stored format: base64(iv ‖ authTag ‖ ciphertext), with the key version in a separate
+ * column. Measured cost: ~20 µs to encrypt and ~10 µs to decrypt a 500-character
+ * message.
+ *
+ * Messages thrown here stay in Portuguese: they are read by the operator in the
+ * deploy logs.
  */
 
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 const KEY_BYTES = 32;
 
-/** Chaves que já circularam publicamente e nunca podem cifrar dado real. */
+/** Keys that have circulated publicly and must never encrypt real data. */
 const FORBIDDEN_KEYS = new Set([
   'replace-with-a-32-byte-base64-key',
-  Buffer.alloc(KEY_BYTES).toString('base64'), // 32 bytes zerados
+  Buffer.alloc(KEY_BYTES).toString('base64'), // 32 zeroed bytes
 ]);
 
 export type EncryptionKeyring = {
-  /** Versão usada para gravar. Sempre a mais recente. */
+  /** Version used for writing. Always the newest one. */
   activeVersion: number;
-  /** Todas as chaves conhecidas, por versão — inclui as aposentadas, para leitura. */
+  /** Every known key by version — retired ones included, so old rows stay readable. */
   keys: Map<number, Buffer>;
 };
 
@@ -51,14 +54,14 @@ function parseKey(raw: string, label: string): Buffer {
 }
 
 /**
- * Monta o chaveiro a partir do ambiente.
+ * Builds the keyring from the environment.
  *
- * APP_ENCRYPTION_KEY         chave ativa (obrigatória)
- * APP_ENCRYPTION_KEY_VERSION versão da chave ativa (opcional, padrão 1)
- * APP_ENCRYPTION_KEYS_RETIRED chaves antigas para leitura, "versao:base64,versao:base64"
+ * APP_ENCRYPTION_KEY          active key (required)
+ * APP_ENCRYPTION_KEY_VERSION  version of the active key (optional, defaults to 1)
+ * APP_ENCRYPTION_KEYS_RETIRED older read-only keys, "version:base64,version:base64"
  *
- * A rotação vira, assim, uma mudança de configuração: incrementa a versão, move a
- * chave anterior para RETIRED, e as linhas antigas seguem legíveis até o rebackfill.
+ * Rotation is therefore a configuration change: bump the version, move the previous
+ * key to RETIRED, and existing rows stay readable until they are re-encrypted.
  */
 export function buildKeyring(source: NodeJS.ProcessEnv = process.env): EncryptionKeyring {
   const active = source.APP_ENCRYPTION_KEY?.trim();
@@ -105,7 +108,7 @@ export class EncryptionService {
     return this.keyring.activeVersion;
   }
 
-  /** Cifra com a chave ativa. Devolve base64(iv ‖ authTag ‖ ciphertext). */
+  /** Encrypts with the active key. Returns base64(iv ‖ authTag ‖ ciphertext). */
   encrypt(plaintext: string): string {
     const key = this.keyring.keys.get(this.keyring.activeVersion)!;
     const iv = randomBytes(IV_BYTES);
@@ -114,7 +117,7 @@ export class EncryptionService {
     return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64');
   }
 
-  /** Decifra. Lança se o conteúdo foi adulterado ou se a versão da chave é desconhecida. */
+  /** Decrypts. Throws if the content was tampered with or the key version is unknown. */
   decrypt(stored: string, keyVersion: number): string {
     const key = this.keyring.keys.get(keyVersion);
     if (!key) {
@@ -124,8 +127,8 @@ export class EncryptionService {
       );
     }
     const raw = Buffer.from(stored, 'base64');
-    // Estritamente menor: a cifra de uma string vazia tem exatamente IV + authTag
-    // e é um valor legítimo (um campo opcional gravado em branco).
+    // Strictly less than: encrypting an empty string yields exactly IV + authTag, and
+    // that is a legitimate value (an optional field saved blank).
     if (raw.length < IV_BYTES + AUTH_TAG_BYTES) {
       throw new Error('Conteúdo cifrado malformado: menor que o cabeçalho mínimo.');
     }
@@ -138,11 +141,11 @@ export class EncryptionService {
   }
 
   /**
-   * Leitura tolerante à transição.
+   * Transition-tolerant read.
    *
-   * Enquanto o backfill não termina, convivem linhas cifradas (keyVersion definida)
-   * e linhas ainda em texto claro (keyVersion nula). Este método resolve as duas
-   * sem que cada chamador precise conhecer a diferença.
+   * Until the backfill finishes, encrypted rows (keyVersion set) and still-plaintext
+   * rows (keyVersion null) coexist. This resolves both so no caller has to know the
+   * difference.
    */
   read(encrypted: string | null | undefined, keyVersion: number | null | undefined, plaintext: string | null | undefined): string {
     if (encrypted != null && keyVersion != null) {
@@ -151,22 +154,12 @@ export class EncryptionService {
     return plaintext ?? '';
   }
 
-  /** Igual a `read`, mas preserva `null` para campos opcionais (ex: nota do diário). */
+  /** Same as `read`, but keeps `null` for optional fields such as the diary note. */
   readOptional(encrypted: string | null | undefined, keyVersion: number | null | undefined, plaintext: string | null | undefined): string | null {
     if (encrypted != null && keyVersion != null) {
       return this.decrypt(encrypted, keyVersion);
     }
     return plaintext ?? null;
-  }
-
-  /**
-   * Compara dois textos em tempo constante. Não é usado no fluxo de mensagens, mas
-   * fica aqui para qualquer comparação futura de segredo derivado.
-   */
-  static safeEquals(a: string, b: string): boolean {
-    const bufferA = Buffer.from(a, 'utf8');
-    const bufferB = Buffer.from(b, 'utf8');
-    return bufferA.length === bufferB.length && timingSafeEqual(bufferA, bufferB);
   }
 }
 

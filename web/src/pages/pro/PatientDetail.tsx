@@ -1,13 +1,8 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Button, Card, Input, Skeleton } from '../../components/UI';
-import { ModalAgendamento } from '../../components/ModalAgendamento';
+import { ScheduleModal } from '../../components/ScheduleModal';
 import { toast } from 'sonner';
 import { 
   LineChart, 
@@ -33,13 +28,13 @@ import {
 interface MoodLog {
   id: string;
   date: string;
-  humor_geral: number;
-  qualidade_sono: number;
-  nivel_energia: number;
-  nivel_ansiedade: number;
-  interacao_social: boolean;
-  nota?: string;
-  indice_bem_estar: number;
+  moodScore: number;
+  sleepScore: number;
+  energyScore: number;
+  anxietyScore: number;
+  socialInteraction: boolean;
+  note?: string;
+  wellbeingIndex: number;
 }
 
 interface PatientDetails {
@@ -49,7 +44,7 @@ interface PatientDetails {
   cpf?: string;
 }
 
-export default function PacienteDetail() {
+export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
@@ -118,7 +113,7 @@ export default function PacienteDetail() {
 
   // Check for recent critical warnings (mood <= 2 or anxiety >= 4)
   const getRecentAlerts = () => {
-    return evaluations.filter(e => e.humor_geral <= 2 || e.nivel_ansiedade >= 4);
+    return evaluations.filter(e => e.moodScore <= 2 || e.anxietyScore >= 4);
   };
 
   const recentAlerts = getRecentAlerts();
@@ -127,11 +122,11 @@ export default function PacienteDetail() {
   // Format Recharts date logs
   const chartData = evaluations.map((e) => ({
     Data: e.date.substring(5), // Keep only MM-DD
-    Humor: e.humor_geral,
-    Sono: e.qualidade_sono,
-    Energia: e.nivel_energia,
-    Ansiedade: e.nivel_ansiedade,
-    'Índice Bem-Estar': parseFloat(e.indice_bem_estar.toFixed(2)),
+    Humor: e.moodScore,
+    Sono: e.sleepScore,
+    Energia: e.energyScore,
+    Ansiedade: e.anxietyScore,
+    'Índice Bem-Estar': parseFloat(e.wellbeingIndex.toFixed(2)),
   }));
 
   return (
@@ -165,7 +160,7 @@ export default function PacienteDetail() {
         </Button>
       </div>
 
-      {/* Alarme Crítico */}
+      {/* Critical alert */}
       {hasCriticalAlert && (
         <div className="bg-[#B54B3C]/10 border border-[#B54B3C]/30 text-[#B54B3C] rounded-xl p-5 flex gap-4 items-start animate-pulse">
           <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5" />
@@ -265,7 +260,7 @@ export default function PacienteDetail() {
                             {e.date}
                           </span>
                           <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#7A8B76]/10 text-[#7A8B76]">
-                            Bem-Estar: {e.indice_bem_estar.toFixed(2)}
+                            Bem-Estar: {e.wellbeingIndex.toFixed(2)}
                           </span>
                         </div>
 
@@ -273,34 +268,34 @@ export default function PacienteDetail() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#F9F8F4] p-3 rounded-lg text-xs">
                           <div>
                             <p className="text-[#6D736E] font-medium">Humor geral:</p>
-                            <p className="font-bold text-[#2C332D]">{e.humor_geral} / 5</p>
+                            <p className="font-bold text-[#2C332D]">{e.moodScore} / 5</p>
                           </div>
                           <div>
                             <p className="text-[#6D736E] font-medium">Qualidade sono:</p>
-                            <p className="font-bold text-[#2C332D]">{e.qualidade_sono} / 5</p>
+                            <p className="font-bold text-[#2C332D]">{e.sleepScore} / 5</p>
                           </div>
                           <div>
                             <p className="text-[#6D736E] font-medium">Energia física:</p>
-                            <p className="font-bold text-[#2C332D]">{e.nivel_energia} / 5</p>
+                            <p className="font-bold text-[#2C332D]">{e.energyScore} / 5</p>
                           </div>
                           <div>
                             <p className="text-[#6D736E] font-medium">Ansiedade:</p>
-                            <p className={`font-bold ${e.nivel_ansiedade >= 4 ? 'text-[#B54B3C]' : 'text-[#2C332D]'}`}>
-                              {e.nivel_ansiedade} / 5
+                            <p className={`font-bold ${e.anxietyScore >= 4 ? 'text-[#B54B3C]' : 'text-[#2C332D]'}`}>
+                              {e.anxietyScore} / 5
                             </p>
                           </div>
                         </div>
 
                         <div className="text-xs text-[#6D736E] flex items-center gap-2">
                           <span className="font-bold">Interação Social no dia:</span>
-                          <span className={`px-2 py-0.5 rounded-full font-bold ${e.interacao_social ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                            {e.interacao_social ? 'Sim' : 'Não'}
+                          <span className={`px-2 py-0.5 rounded-full font-bold ${e.socialInteraction ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {e.socialInteraction ? 'Sim' : 'Não'}
                           </span>
                         </div>
 
-                        {e.nota && (
+                        {e.note && (
                           <div className="bg-[#C16E59]/5 border border-[#C16E59]/10 rounded-lg p-3 text-sm text-[#2C332D] italic">
-                            "{e.nota}"
+                            "{e.note}"
                           </div>
                         )}
                       </div>
@@ -373,7 +368,7 @@ export default function PacienteDetail() {
                 Precisa discutir alguma das anotações ou fazer um follow-up rápido com {patient?.name}? Entre no canal de chat.
               </p>
               <Button 
-                onClick={() => navigate(`/paciente/chat?partnerId=${id}`)} 
+                onClick={() => navigate(`/patient/chat?partnerId=${id}`)} 
                 variant="outline" 
                 className="w-full border-[#7A8B76] text-[#7A8B76] hover:bg-[#7A8B76]/5"
               >
@@ -385,8 +380,8 @@ export default function PacienteDetail() {
         </div>
       )}
 
-      {/* Modal de Agendamento */}
-      <ModalAgendamento
+      {/* Scheduling modal */}
+      <ScheduleModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
         onSuccess={() => toast.success('Agendamento realizado com sucesso!')}

@@ -7,15 +7,15 @@ import { validateEnv } from './common/env';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // O ConfigModule já carregou o .env durante a criação do app; validateEnv é puro
+  // ConfigModule already loaded .env while creating the app; validateEnv is pure
   // e devolve os mesmos valores validados, agora tipados, para uso no bootstrap.
   const env = validateEnv();
   const requestedPort = env.port;
   const isProd = env.isProd;
 
-  // O Render envia SIGTERM ao hibernar ou redeployar. Sem isto o Nest não escuta
-  // o sinal, o onModuleDestroy nunca roda e as conexões com o banco ficam
-  // penduradas até o timeout do Postgres — custo real no plano gratuito do Neon.
+  // Render sends SIGTERM when hibernating or redeploying. Without this Nest never
+  // listens for the signal, onModuleDestroy never runs, and database connections hang
+  // until Postgres times them out — a real cost on Neon's free tier.
   app.enableShutdownHooks();
 
   app.getHttpAdapter().getInstance().set('trust proxy', isProd ? 1 : false);
@@ -26,10 +26,10 @@ async function bootstrap() {
   }));
   app.setGlobalPrefix('api/v1');
 
-  // CORS por lista branca estrita. As origens de produção vêm exclusivamente de
-  // WEB_ORIGIN (canônica) e CORS_ORIGINS (extras); as de desenvolvimento só entram fora de
-  // produção. Não há coringa: um preview novo é adicionado ao WEB_ORIGIN, não
-  // liberado por padrão de domínio — qualquer pessoa pode publicar em *.vercel.app.
+  // Strict CORS allowlist. Production origins come only from WEB_ORIGIN (canonical)
+  // and CORS_ORIGINS (extras); development ones are added outside production only.
+  // No wildcard: a new preview is added to WEB_ORIGIN rather than allowed by domain
+  // pattern — anyone can publish to *.vercel.app.
   const devOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
@@ -40,7 +40,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Clientes não-browser (health checks, server-to-server, mobile) não enviam Origin
+      // Non-browser clients (health checks, server-to-server, mobile) send no Origin
       if (!origin) return callback(null, true);
 
       return callback(null, allowedOrigins.has(origin.replace(/\/$/, '')));
@@ -127,14 +127,14 @@ async function bootstrap() {
 
   throw new Error(`Não foi possível iniciar a API: nenhuma porta disponível entre ${candidatePorts[0]} e ${candidatePorts[candidatePorts.length - 1]}.`);
 }
-// Sem estes handlers, uma rejeição não tratada encerrava o processo sem deixar
-// rastro no log do Render, transformando uma falha diagnosticável em reinício mudo.
+// Without these handlers an unhandled rejection killed the process leaving no trace
+// in Render's log, turning a diagnosable failure into a silent restart.
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
 });
 process.on('uncaughtException', (error) => {
   console.error('[uncaughtException]', error.stack ?? error);
-  // Estado do processo é indefinido após uma exceção não capturada: sair deixa o
+  // Process state is undefined after an uncaught exception: exiting lets the
   // Render reiniciar num estado limpo, em vez de seguir servindo de forma incerta.
   process.exit(1);
 });

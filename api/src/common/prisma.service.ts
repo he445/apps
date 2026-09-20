@@ -3,10 +3,9 @@ import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
-  // Sem $connect() no arranque de propósito: o Prisma conecta preguiçosamente na
-  // primeira query. Forçar a conexão fazia o boot esperar o Neon sair da
-  // suspensão, empilhando dois cold starts (Render + Neon) antes de a aplicação
-  // conseguir responder até mesmo /health.
+  // No $connect() at boot on purpose: Prisma connects lazily on the first query.
+  // Forcing it made boot wait for Neon to wake from suspend, stacking two cold starts
+  // (Render + Neon) before the app could answer even /health.
   async onModuleDestroy() { await this.$disconnect(); }
 }
 

@@ -40,7 +40,6 @@ apps/
 │   ├── src/
 │   │   ├── auth/               # Autenticação JWT e gestão de convites
 │   │   ├── care/               # Consultas, autoavaliações, chat, relatórios
-│   │   ├── invitations/        # Criação e aceite de convites
 │   │   ├── users/              # Perfil de usuário e exclusão de conta (LGPD)
 │   │   ├── admin/               # Painel administrativo, telemetria e sandbox
 │   │   ├── common/             # Guards JWT, criptografia e Prisma Service
@@ -151,6 +150,28 @@ Para rodar a suíte automatizada que valida 100% dos fluxos (autenticação, con
 ```bash
 npm run test:e2e
 ```
+
+---
+
+## 📐 Convenções de Código
+
+O código é escrito **em inglês**: nomes de variáveis, funções, arquivos, rotas, campos
+da API e comentários. O que é **lido por uma pessoa continua em português**: textos da
+interface, mensagens de erro da API e mensagens de configuração exibidas no log do
+deploy — os usuários e o operador do sistema são brasileiros.
+
+Na prática:
+
+```ts
+// ✅ código em inglês, mensagem em português
+if (user.role !== Role.PROFESSIONAL) {
+  throw new ForbiddenException('Apenas o profissional agenda consultas.');
+}
+```
+
+Rotas do frontend e campos da API seguem a mesma regra (`/patient/dashboard`,
+`moodScore`, `wellbeingIndex`), enquanto rótulos de tela permanecem em português
+("Painel do Paciente", "Índice de Bem-Estar").
 
 ---
 

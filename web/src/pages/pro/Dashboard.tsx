@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Button, Card, Skeleton, EmptyState } from '../../components/UI';
@@ -15,7 +10,6 @@ import {
   Calendar, 
   TrendingUp, 
   Copy, 
-  ExternalLink,
   DollarSign
 } from 'lucide-react';
 
@@ -26,13 +20,13 @@ interface Patient {
   cpf?: string;
   latestMood?: {
     date: string;
-    humor_geral: number;
-    indice_bem_estar: number;
+    moodScore: number;
+    wellbeingIndex: number;
   } | null;
   pendingPaymentsCount: number;
 }
 
-export default function DashboardPro() {
+export default function ProfessionalDashboard() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [inviteCode, setInviteCode] = useState('');
@@ -41,7 +35,7 @@ export default function DashboardPro() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Próximas consultas agendadas (as 5 mais próximas)
+  // The five nearest upcoming consultations.
   const [sessions, setSessions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -51,12 +45,12 @@ export default function DashboardPro() {
         setPatients(patientsRes.data.patients);
         const code = patientsRes.data.inviteCode || '';
         setInviteCode(code);
-        setInviteLink(code ? `${window.location.origin}/convite/${code}` : (patientsRes.data.inviteLink || ''));
+        setInviteLink(code ? `${window.location.origin}/invite/${code}` : (patientsRes.data.inviteLink || ''));
 
         const financeRes = await api.get('/consultations');
-        // 'PENDING' pertence a paymentStatus; o enum de status é SCHEDULED |
+        // 'PENDING' belongs to paymentStatus; the status enum is SCHEDULED |
         // COMPLETED | PATIENT_NO_SHOW | CANCELLED. O filtro antigo nunca casava,
-        // então este card ficava permanentemente vazio.
+        // so this card stayed permanently empty.
         const now = Date.now();
         const upcoming = (financeRes.data || [])
           .filter((s: any) => s.status === 'SCHEDULED' && new Date(s.dateTime).getTime() >= now)
@@ -92,7 +86,7 @@ export default function DashboardPro() {
       const res = await api.post('/care/professional/invitations');
       const code = res.data.inviteCode || res.data.code || res.data.token || '';
       setInviteCode(code);
-      setInviteLink(code ? `${window.location.origin}/convite/${code}` : (res.data.inviteLink || ''));
+      setInviteLink(code ? `${window.location.origin}/invite/${code}` : (res.data.inviteLink || ''));
       toast.success('Link de convite do psicólogo pronto para compartilhar.');
     } catch (err) {
       toast.error('Não foi possível obter o convite.');
@@ -156,7 +150,7 @@ export default function DashboardPro() {
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {patients.map((p) => {
-                const moodScore = p.latestMood?.indice_bem_estar || 0;
+                const moodScore = p.latestMood?.wellbeingIndex || 0;
                 return (
                   <Card key={p.id} className="hover:border-[#7A8B76]/30 transition-all group shadow-2xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -192,7 +186,7 @@ export default function DashboardPro() {
 
                         <div className="flex gap-2">
                           <Button
-                            onClick={() => navigate(`/pro/paciente/${p.id}`)}
+                            onClick={() => navigate(`/pro/patient/${p.id}`)}
                             variant="outline"
                             title="Ver evolução e diário clínico"
                             aria-label={`Ver evolução de ${p.name}`}
@@ -201,7 +195,7 @@ export default function DashboardPro() {
                             <TrendingUp className="h-4 w-4" />
                           </Button>
                           <Button 
-                            onClick={() => navigate(`/paciente/chat?partnerId=${p.id}`)}
+                            onClick={() => navigate(`/patient/chat?partnerId=${p.id}`)}
                             variant="outline"
                             title="Abrir Chat Clínico"
                             aria-label={`Abrir chat com ${p.name}`}
@@ -228,7 +222,7 @@ export default function DashboardPro() {
               <span>Consultas Agendadas</span>
             </h2>
             <Button
-              onClick={() => navigate('/pro/agenda')}
+              onClick={() => navigate('/pro/schedule')}
               variant="outline"
               className="text-xs px-3 py-1.5 border-[#7A8B76]/30 text-[#7A8B76] hover:bg-[#7A8B76]/10"
             >
@@ -267,7 +261,7 @@ export default function DashboardPro() {
           </Card>
 
           {/* Quick link to finance */}
-          <Card className="bg-[#7A8B76]/5 border border-[#7A8B76]/10 flex items-center justify-between p-4 rounded-xl cursor-pointer hover:bg-[#7A8B76]/10 transition-all" onClick={() => navigate('/pro/financeiro')}>
+          <Card className="bg-[#7A8B76]/5 border border-[#7A8B76]/10 flex items-center justify-between p-4 rounded-xl cursor-pointer hover:bg-[#7A8B76]/10 transition-all" onClick={() => navigate('/pro/finance')}>
             <div className="flex items-center gap-3">
               <DollarSign className="h-5 w-5 text-[#7A8B76]" />
               <div className="flex flex-col">

@@ -1,6 +1,6 @@
 import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Injectable, Module, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { BillingType, ConsultationStatus, InvitationStatus, PaymentStatus, Role } from '@prisma/client';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { BillingType, ChatMessage, ConsultationStatus, InvitationStatus, PaymentStatus, Role, SelfAssessment } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, registerDecorator, ValidationOptions } from 'class-validator';
 import { CurrentUser, JwtUser } from '../common/auth';
@@ -9,9 +9,42 @@ import { PrismaService } from '../common/prisma.service';
 import { EncryptionService } from '../common/encryption.service';
 
 /**
- * Exige ISO 8601 com fuso explícito. `@IsDateString()` aceitava "2026-09-02T14:00:00",
- * que o servidor (em UTC) interpretava como 14h UTC — três horas adiantado para quem
- * marcou 14h em São Paulo.
+ * Payload limits. These mirror the column widths in `schema.prisma`: validating here
+ * turns what would be a database error into a 400 with a readable message.
+ */
+const NOTE_MAX_LENGTH = 150;
+const GUIDELINE_TITLE_MAX_LENGTH = 120;
+const GUIDELINE_TEXT_MAX_LENGTH = 500;
+const MESSAGE_MAX_LENGTH = 1000;
+
+/** Default session length, used to detect overlapping bookings. */
+const DEFAULT_SESSION_MINUTES = 50;
+
+/** Score used when the patient submits an assessment without answering an item. */
+const NEUTRAL_SCORE = 3;
+
+/** How many past assessments the progress charts read. */
+const ASSESSMENT_HISTORY_DAYS = 90;
+
+/**
+ * Wellbeing index on a 1–5 scale. Anxiety is inverted (6 - score) so that every term
+ * points the same way: higher is better. Kept here because the professional dashboard,
+ * the patient dashboard and both assessment endpoints all report it.
+ */
+function wellbeingIndex(scores: {
+  moodScore: number;
+  sleepScore: number;
+  energyScore: number;
+  anxietyScore: number;
+}): number {
+  const { moodScore, sleepScore, energyScore, anxietyScore } = scores;
+  return Number(((moodScore + sleepScore + energyScore + (6 - anxietyScore)) / 4).toFixed(2));
+}
+
+/**
+ * Requires ISO 8601 with an explicit offset. `@IsDateString()` accepted
+ * "2026-09-02T14:00:00", which the server (running in UTC) read as 14:00 UTC —
+ * three hours ahead of whoever booked 14:00 in São Paulo.
  */
 function IsIsoDateTimeWithOffset(validationOptions?: ValidationOptions) {
   return (object: object, propertyName: string) => {
@@ -48,37 +81,26 @@ class AssessmentDto {
   @IsOptional() @IsInt() @Min(1) @Max(5) sleepScore?: number;
   @IsOptional() @IsInt() @Min(1) @Max(5) energyScore?: number;
   @IsOptional() @IsBoolean() socialInteraction?: boolean;
-  @IsOptional() @IsString() @MaxLength(150) quickNote?: string;
-
-  // Fallbacks em português
-  @IsOptional() @IsInt() @Min(1) @Max(5) humor_geral?: number;
-  @IsOptional() @IsInt() @Min(1) @Max(5) nivel_ansiedade?: number;
-  @IsOptional() @IsInt() @Min(1) @Max(5) qualidade_sono?: number;
-  @IsOptional() @IsInt() @Min(1) @Max(5) nivel_energia?: number;
-  @IsOptional() @IsBoolean() interacao_social?: boolean;
-  @IsOptional() @IsString() @MaxLength(150) nota?: string;
+  @IsOptional() @IsString() @MaxLength(NOTE_MAX_LENGTH) note?: string;
 }
 
 class GuidelineDto {
-  // Opcional: a API publica separada do frontend e um bundle antigo em cache ainda
-  // envia só `text`. Sem título, o mural cai no rótulo genérico de antes.
-  @IsOptional() @IsString() @MinLength(1) @MaxLength(120) title?: string;
-  @IsString() @MinLength(1) @MaxLength(500) text!: string;
+  // Optional: the API ships separately from the web app, and a cached older bundle
+  // still posts `text` alone. Without a title the board falls back to a generic label.
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(GUIDELINE_TITLE_MAX_LENGTH) title?: string;
+  @IsString() @MinLength(1) @MaxLength(GUIDELINE_TEXT_MAX_LENGTH) text!: string;
 }
 
 class MessageDto {
   @IsString() receiverId!: string;
-  @IsOptional() @IsString() @MaxLength(1000) messageText?: string;
-  @IsOptional() @IsString() @MaxLength(1000) text?: string;
+  @IsString() @MinLength(1) @MaxLength(MESSAGE_MAX_LENGTH) text!: string;
 }
 
 class InviteTokenDto {
   @IsString() @MinLength(6) @MaxLength(64) token!: string;
 }
 
-/** Duração padrão de sessão, usada para detectar sobreposição na agenda. */
-const DEFAULT_SESSION_MINUTES = 50;
-
+/** Resolves and enforces the professional–patient link behind every clinical route. */
 @Injectable()
 class AccessService {
   constructor(private readonly prisma: PrismaService) {}
@@ -105,9 +127,9 @@ class DashboardService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Antes: 2 queries por paciente dentro do Promise.all (findFirst + count) — 40
-    // pacientes viravam 80 idas ao banco a cada carregamento deste dashboard. Agora
-    // são 3 queries fixas, independentes de N, combinadas em memória via Map.
+    // Was 2 queries per patient inside a Promise.all (findFirst + count): 40 patients
+    // meant 80 round trips on every dashboard load. Now 3 fixed queries regardless of
+    // N, joined in memory through a Map.
     const patientIds = connectionRows.map((row) => row.patientId);
 
     const latestPerPatient = patientIds.length === 0 ? [] : await this.prisma.selfAssessment.groupBy({
@@ -146,8 +168,8 @@ class DashboardService {
         latestMood: latestAssessment
           ? {
               date: latestAssessment.createdAt.toISOString().slice(0, 10),
-              humor_geral: latestAssessment.moodScore,
-              indice_bem_estar: Number(((latestAssessment.moodScore + latestAssessment.sleepScore + latestAssessment.energyScore + (6 - latestAssessment.anxietyScore)) / 4).toFixed(2)),
+              moodScore: latestAssessment.moodScore,
+              wellbeingIndex: wellbeingIndex(latestAssessment),
             }
           : null,
         pendingPaymentsCount: pendingByPatient.get(row.patientId) ?? 0,
@@ -164,17 +186,10 @@ class DashboardService {
 
   async createInvitation(user: JwtUser) {
     if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas profissionais podem gerar convites.');
-    // A ação explícita de gerar convite sempre cria um novo link seguro. O
-    // convite anterior continua válido durante a transição para não quebrar
-    // links já enviados a pacientes.
+    // Asking for an invitation always mints a fresh link. The previous one stays valid
+    // so that links already sent to patients keep working.
     const token = await this.createInviteToken(user.sub, true);
-    return {
-      inviteCode: token,
-      code: token,
-      inviteLink: this.buildInviteLink(token),
-      link: this.buildInviteLink(token),
-      token,
-    };
+    return { inviteCode: token, inviteLink: this.buildInviteLink(token) };
   }
 
   async getPatientDashboard(user: JwtUser) {
@@ -185,7 +200,7 @@ class DashboardService {
       include: { professional: { select: { id: true, fullName: true, settings: { select: { pixKey: true } } } } },
     });
 
-    // Janela do dia no fuso do produto, não no do servidor (que roda em UTC).
+    // Day window in the product's timezone, not the server's (which runs in UTC).
     const { start: todayStart, end: todayEnd } = dayRangeInAppTimezone();
 
     const todaysAssessment = await this.prisma.selfAssessment.findFirst({
@@ -193,34 +208,33 @@ class DashboardService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const orientations = await this.prisma.guideline.findMany({
+    const guidelines = await this.prisma.guideline.findMany({
       where: { patientId: user.sub },
       orderBy: { createdAt: 'desc' },
     });
 
     return {
-      psychologistId: connection?.professional.id,
       professionalId: connection?.professional.id,
-      psychologistName: connection?.professional.fullName ?? 'Aguardando vínculo com um profissional',
+      professionalName: connection?.professional.fullName ?? 'Aguardando vínculo com um profissional',
       pixKey: connection?.professional.settings?.pixKey || '',
       hasEvaluatedToday: !!todaysAssessment,
       todaysMood: todaysAssessment
         ? {
-            humor_geral: todaysAssessment.moodScore,
-            qualidade_sono: todaysAssessment.sleepScore,
-            nivel_energia: todaysAssessment.energyScore,
-            nivel_ansiedade: todaysAssessment.anxietyScore,
-            interacao_social: todaysAssessment.socialInteraction,
-            nota: this.crypto.read(todaysAssessment.encryptedNote, todaysAssessment.noteKeyVersion, todaysAssessment.quickNote),
-            indice_bem_estar: Number(((todaysAssessment.moodScore + todaysAssessment.sleepScore + todaysAssessment.energyScore + (6 - todaysAssessment.anxietyScore)) / 4).toFixed(2)),
+            moodScore: todaysAssessment.moodScore,
+            sleepScore: todaysAssessment.sleepScore,
+            energyScore: todaysAssessment.energyScore,
+            anxietyScore: todaysAssessment.anxietyScore,
+            socialInteraction: todaysAssessment.socialInteraction,
+            note: this.crypto.read(todaysAssessment.encryptedNote, todaysAssessment.noteKeyVersion, todaysAssessment.quickNote),
+            wellbeingIndex: wellbeingIndex(todaysAssessment),
           }
         : null,
-      orientations: orientations.map((orientation) => ({
-        id: orientation.id,
-        // Orientações criadas antes da coluna de título não têm um: mantêm o rótulo genérico.
-        title: this.crypto.readOptional(orientation.encryptedTitle, orientation.titleKeyVersion, null) ?? 'Orientação recebida',
-        content: this.crypto.read(orientation.encryptedText, orientation.textKeyVersion, orientation.text),
-        date: orientation.createdAt.toISOString().slice(0, 10),
+      guidelines: guidelines.map((guideline) => ({
+        id: guideline.id,
+        // Guidelines written before the title column existed keep a generic label.
+        title: this.crypto.readOptional(guideline.encryptedTitle, guideline.titleKeyVersion, null) ?? 'Orientação recebida',
+        content: this.crypto.read(guideline.encryptedText, guideline.textKeyVersion, guideline.text),
+        date: guideline.createdAt.toISOString().slice(0, 10),
       })),
     };
   }
@@ -261,8 +275,8 @@ class DashboardService {
 
       return {
         success: true,
-        psychologistName: invitation.professional.fullName,
         professionalId: invitation.professionalId,
+        professionalName: invitation.professional.fullName,
       };
     });
   }
@@ -287,10 +301,10 @@ class DashboardService {
   }
 
   private buildInviteLink(token: string) {
-    // WEB_ORIGIN é validada como URL única no arranque; origens extras de CORS
-    // ficam em CORS_ORIGINS e não interferem aqui.
+    // WEB_ORIGIN is validated as a single URL at boot; extra CORS origins live in
+    // CORS_ORIGINS and do not take part here.
     const baseUrl = process.env.WEB_ORIGIN?.trim().replace(/\/$/, '') || 'http://localhost:5173';
-    return `${baseUrl}/convite/${token}`;
+    return `${baseUrl}/invite/${token}`;
   }
 }
 
@@ -369,9 +383,8 @@ class ConsultationsService {
     });
   }
   /**
-   * Impede dois pacientes no mesmo horário. A agenda não modelava duração de
-   * sessão, então a janela usa o padrão de 50 minutos até que a duração seja
-   * configurável por profissional.
+   * Blocks double-booking the same slot. The schedule does not model session length
+   * yet, so the window uses the default until it becomes configurable per professional.
    */
   private async assertSlotIsFree(professionalId: string, dateTime: Date, ignoreConsultationId?: string) {
     const windowStart = new Date(dateTime.getTime() - DEFAULT_SESSION_MINUTES * 60_000);
@@ -386,9 +399,9 @@ class ConsultationsService {
       select: { dateTime: true, patientNameForTax: true },
     });
     if (conflict) {
-      const quando = conflict.dateTime.toLocaleString('pt-BR', { timeZone: APP_TIMEZONE });
+      const when = conflict.dateTime.toLocaleString('pt-BR', { timeZone: APP_TIMEZONE });
       throw new ConflictException(
-        `Conflito de agenda: já existe consulta com ${conflict.patientNameForTax} em ${quando}.`,
+        `Conflito de agenda: já existe consulta com ${conflict.patientNameForTax} em ${when}.`,
       );
     }
   }
@@ -431,14 +444,14 @@ class AssessmentsService {
   async create(user: JwtUser, dto: AssessmentDto) {
     if (user.role !== Role.PATIENT) throw new ForbiddenException('A autoavaliação pertence ao paciente.');
 
-    const moodScore = dto.moodScore ?? dto.humor_geral ?? 3;
-    const anxietyScore = dto.anxietyScore ?? dto.nivel_ansiedade ?? 3;
-    const sleepScore = dto.sleepScore ?? dto.qualidade_sono ?? 3;
-    const energyScore = dto.energyScore ?? dto.nivel_energia ?? 3;
-    const socialInteraction = dto.socialInteraction ?? dto.interacao_social ?? true;
-    const quickNote = dto.quickNote ?? dto.nota;
+    const moodScore = dto.moodScore ?? NEUTRAL_SCORE;
+    const anxietyScore = dto.anxietyScore ?? NEUTRAL_SCORE;
+    const sleepScore = dto.sleepScore ?? NEUTRAL_SCORE;
+    const energyScore = dto.energyScore ?? NEUTRAL_SCORE;
+    const socialInteraction = dto.socialInteraction ?? true;
+    const note = dto.note;
 
-    // Janela do dia no fuso do produto, não no do servidor (que roda em UTC).
+    // Day window in the product's timezone, not the server's (which runs in UTC).
     const { start: todayStart, end: todayEnd } = dayRangeInAppTimezone();
 
     const existingToday = await this.prisma.selfAssessment.findFirst({
@@ -446,43 +459,25 @@ class AssessmentsService {
       orderBy: { createdAt: 'desc' },
     });
 
+    const noteColumns = {
+      // Dual write during the migration: the plaintext column goes away in Release B,
+      // once the backfill confirms everything is encrypted.
+      quickNote: note,
+      encryptedNote: note ? this.crypto.encrypt(note) : null,
+      noteKeyVersion: note ? this.crypto.activeVersion : null,
+    };
+    const scores = { moodScore, anxietyScore, sleepScore, energyScore, socialInteraction };
+
     const record = existingToday
       ? await this.prisma.selfAssessment.update({
           where: { id: existingToday.id },
-          data: {
-            moodScore, anxietyScore, sleepScore, energyScore, socialInteraction,
-            quickNote,
-            encryptedNote: quickNote ? this.crypto.encrypt(quickNote) : null,
-            noteKeyVersion: quickNote ? this.crypto.activeVersion : null,
-          },
+          data: { ...scores, ...noteColumns },
         })
       : await this.prisma.selfAssessment.create({
-          data: {
-            patientId: user.sub,
-            moodScore,
-            anxietyScore,
-            sleepScore,
-            energyScore,
-            socialInteraction,
-            quickNote,
-            encryptedNote: quickNote ? this.crypto.encrypt(quickNote) : null,
-            noteKeyVersion: quickNote ? this.crypto.activeVersion : null,
-          },
+          data: { patientId: user.sub, ...scores, ...noteColumns },
         });
 
-    const indice_bem_estar = Number(((moodScore + sleepScore + energyScore + (6 - anxietyScore)) / 4).toFixed(2));
-
-    return {
-      ...record,
-      humor_geral: record.moodScore,
-      nivel_ansiedade: record.anxietyScore,
-      qualidade_sono: record.sleepScore,
-      nivel_energia: record.energyScore,
-      interacao_social: record.socialInteraction,
-      nota: this.crypto.readOptional(record.encryptedNote, record.noteKeyVersion, record.quickNote),
-      date: record.createdAt.toISOString().slice(0, 10),
-      indice_bem_estar,
-    };
+    return this.toResponse(record);
   }
 
   async list(user: JwtUser, patientId: string) {
@@ -490,36 +485,62 @@ class AssessmentsService {
     const assessments = await this.prisma.selfAssessment.findMany({
       where: { patientId },
       orderBy: { createdAt: 'asc' },
-      take: 90,
+      take: ASSESSMENT_HISTORY_DAYS,
     });
-    return assessments.map((a) => ({
-      ...a,
-      humor_geral: a.moodScore,
-      nivel_ansiedade: a.anxietyScore,
-      qualidade_sono: a.sleepScore,
-      nivel_energia: a.energyScore,
-      interacao_social: a.socialInteraction,
-      nota: this.crypto.readOptional(a.encryptedNote, a.noteKeyVersion, a.quickNote),
-      date: a.createdAt.toISOString().slice(0, 10),
-      indice_bem_estar: Number(((a.moodScore + a.sleepScore + a.energyScore + (6 - a.anxietyScore)) / 4).toFixed(2)),
-    }));
+    return assessments.map((assessment) => this.toResponse(assessment));
   }
 
-  async addGuideline(user: JwtUser, patientId: string, dto: GuidelineDto) {
-    if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException();
+  /**
+   * Explicit shape on purpose: spreading the Prisma row leaked `encryptedNote` (the
+   * ciphertext) and the duplicated plaintext `quickNote` to the client, and would break
+   * the day the plaintext column is dropped.
+   */
+  private toResponse(row: SelfAssessment) {
+    return {
+      id: row.id,
+      patientId: row.patientId,
+      moodScore: row.moodScore,
+      anxietyScore: row.anxietyScore,
+      sleepScore: row.sleepScore,
+      energyScore: row.energyScore,
+      socialInteraction: row.socialInteraction,
+      note: this.crypto.readOptional(row.encryptedNote, row.noteKeyVersion, row.quickNote),
+      wellbeingIndex: wellbeingIndex(row),
+      date: row.createdAt.toISOString().slice(0, 10),
+      createdAt: row.createdAt,
+    };
+  }
+
+}
+
+/** Therapeutic guidelines the professional posts to the patient's board. */
+@Injectable()
+class GuidelinesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: AccessService,
+    private readonly crypto: EncryptionService,
+  ) {}
+
+  async add(user: JwtUser, patientId: string, dto: GuidelineDto) {
+    if (user.role !== Role.PROFESSIONAL) throw new ForbiddenException('Apenas o profissional envia orientações.');
     await this.access.pair(user, patientId);
+
     const title = dto.title?.trim() || null;
     const created = await this.prisma.guideline.create({
       data: {
         professionalId: user.sub,
         patientId,
+        // Dual write during the migration, as with chat messages and notes.
         text: dto.text,
         encryptedText: this.crypto.encrypt(dto.text),
         textKeyVersion: this.crypto.activeVersion,
+        // The title has no plaintext column: it was added after encryption landed.
         encryptedTitle: title ? this.crypto.encrypt(title) : null,
         titleKeyVersion: title ? this.crypto.activeVersion : null,
       },
     });
+
     return {
       id: created.id,
       patientId: created.patientId,
@@ -530,11 +551,11 @@ class AssessmentsService {
     };
   }
 
-  async guidelines(user: JwtUser, patientId: string) {
+  async list(user: JwtUser, patientId: string) {
     if (user.sub !== patientId) await this.access.pair(user, patientId);
     const rows = await this.prisma.guideline.findMany({ where: { patientId }, orderBy: { createdAt: 'desc' } });
-    // Devolve forma explícita: antes vazava a linha crua, o que passaria a expor
-    // o ciphertext ao cliente e quebraria quando `text` deixar de existir.
+    // Explicit shape: spreading the row would hand the ciphertext to the client and
+    // break once the plaintext column is dropped.
     return rows.map((row) => ({
       id: row.id,
       patientId: row.patientId,
@@ -555,32 +576,23 @@ class ChatService {
   ) {}
 
   async send(user: JwtUser, dto: MessageDto) {
-    const textContent = (dto.messageText || dto.text || '').trim();
-    if (!textContent) throw new BadRequestException('A mensagem não pode ser vazia.');
+    const text = dto.text.trim();
+    if (!text) throw new BadRequestException('A mensagem não pode ser vazia.');
 
     await this.access.pair(user, dto.receiverId);
-    const msg = await this.prisma.chatMessage.create({
+    const message = await this.prisma.chatMessage.create({
       data: {
         senderId: user.sub,
         receiverId: dto.receiverId,
-        // Escrita dupla durante a transição: o texto claro sai na Release B,
-        // depois que o backfill confirmar que tudo está cifrado.
-        messageText: textContent,
-        encryptedText: this.crypto.encrypt(textContent),
+        // Dual write during the migration: the plaintext column goes away in Release B,
+        // once the backfill confirms everything is encrypted.
+        messageText: text,
+        encryptedText: this.crypto.encrypt(text),
         textKeyVersion: this.crypto.activeVersion,
       },
     });
 
-    return {
-      id: msg.id,
-      senderId: msg.senderId,
-      receiverId: msg.receiverId,
-      messageText: textContent,
-      text: textContent,
-      isRead: msg.isRead,
-      createdAt: msg.createdAt,
-      timestamp: msg.createdAt.getTime(),
-    };
+    return this.toResponse(message, text);
   }
 
   async sync(user: JwtUser, partnerId: string, since?: string | number) {
@@ -611,11 +623,11 @@ class ChatService {
       orderBy: { createdAt: 'asc' },
     });
 
-    // A marcação de leitura só faz sentido se o lote trouxe algo do parceiro ainda
-    // não lido. Antes esta escrita era incondicional: com o polling de 3 em 3
-    // segundos, eram ~20 UPDATEs por minuto por aba aberta mesmo sem mensagem
-    // nova, o que mantinha o banco permanentemente ativo e impedia a suspensão
-    // automática do Neon — o maior consumidor da cota gratuita.
+    // Only worth writing if the batch actually brought something unread from the
+    // partner. This used to run unconditionally: with 3-second polling that was ~20
+    // UPDATEs per minute per open tab even with no new message, which kept the
+    // database permanently awake and blocked Neon's auto-suspend — the single largest
+    // consumer of the free tier.
     const hasUnreadFromPartner = messages.some((m) => m.senderId === partnerId && !m.isRead);
     if (hasUnreadFromPartner) {
       await this.prisma.chatMessage.updateMany({
@@ -624,19 +636,9 @@ class ChatService {
       });
     }
 
-    return messages.map((m) => {
-      const body = this.crypto.read(m.encryptedText, m.textKeyVersion, m.messageText);
-      return {
-      id: m.id,
-      senderId: m.senderId,
-      receiverId: m.receiverId,
-      messageText: body,
-      text: body,
-      isRead: m.isRead,
-      createdAt: m.createdAt,
-      timestamp: m.createdAt.getTime(),
-      };
-    });
+    return messages.map((message) =>
+      this.toResponse(message, this.crypto.read(message.encryptedText, message.textKeyVersion, message.messageText)),
+    );
   }
 
   async unreadCount(user: JwtUser) {
@@ -644,6 +646,18 @@ class ChatService {
       where: { receiverId: user.sub, isRead: false },
     });
     return { count, hasUnread: count > 0 };
+  }
+
+  /** `text` comes in already decrypted so this never touches the ciphertext columns. */
+  private toResponse(row: ChatMessage, text: string) {
+    return {
+      id: row.id,
+      senderId: row.senderId,
+      receiverId: row.receiverId,
+      text,
+      isRead: row.isRead,
+      createdAt: row.createdAt,
+    };
   }
 }
 
@@ -667,10 +681,12 @@ class ReportsService {
       },
       orderBy: { dateTime: 'asc' },
     });
-    const grouped = new Map<string, { paciente: string; cpf: string | null; dates: string[]; total: number }>();
+    // Carnê-Leão is declared per payer, not per session: group by the tax identity
+    // recorded on the consultation, which survives the patient deleting their account.
+    const grouped = new Map<string, { patientName: string; cpf: string | null; dates: string[]; total: number }>();
     for (const row of rows) {
       const key = `${row.patientNameForTax}|${row.patientCpfForTax ?? ''}`;
-      const item = grouped.get(key) ?? { paciente: row.patientNameForTax, cpf: row.patientCpfForTax, dates: [], total: 0 };
+      const item = grouped.get(key) ?? { patientName: row.patientNameForTax, cpf: row.patientCpfForTax, dates: [], total: 0 };
       item.dates.push(row.dateTime.toISOString().slice(0, 10));
       item.total += Number(row.sessionPrice);
       grouped.set(key, item);
@@ -686,10 +702,10 @@ class ReportsService {
 class CareController {
   constructor(private readonly dashboard: DashboardService) {}
 
-  @Get('professional/patients') @ApiOperation({ summary: 'Listar pacientes vinculados e gerar convite' }) listProfessionalPatients(@CurrentUser() user: JwtUser) { return this.dashboard.listProfessionalPatients(user); }
-  @Post('professional/invitations') @ApiOperation({ summary: 'Criar um novo convite para paciente' }) createInvitation(@CurrentUser() user: JwtUser) { return this.dashboard.createInvitation(user); }
-  @Get('patient/dashboard') @ApiOperation({ summary: 'Buscar dados do dashboard do paciente' }) getPatientDashboard(@CurrentUser() user: JwtUser) { return this.dashboard.getPatientDashboard(user); }
-  @Post('patient/invitations/accept') @ApiOperation({ summary: 'Aceitar um convite e trocar de profissional' }) acceptInvite(@CurrentUser() user: JwtUser, @Body() body: InviteTokenDto) { return this.dashboard.connectPatientToInvitation(user, body.token); }
+  @Get('professional/patients') @ApiOperation({ summary: 'List linked patients and issue an invitation' }) listProfessionalPatients(@CurrentUser() user: JwtUser) { return this.dashboard.listProfessionalPatients(user); }
+  @Post('professional/invitations') @ApiOperation({ summary: 'Create a new patient invitation' }) createInvitation(@CurrentUser() user: JwtUser) { return this.dashboard.createInvitation(user); }
+  @Get('patient/dashboard') @ApiOperation({ summary: 'Load the patient dashboard' }) getPatientDashboard(@CurrentUser() user: JwtUser) { return this.dashboard.getPatientDashboard(user); }
+  @Post('patient/invitations/accept') @ApiOperation({ summary: 'Accept an invitation and switch professional' }) acceptInvite(@CurrentUser() user: JwtUser, @Body() body: InviteTokenDto) { return this.dashboard.connectPatientToInvitation(user, body.token); }
 }
 
 @ApiTags('consultations')
@@ -697,11 +713,11 @@ class CareController {
 @Controller('consultations')
 class ConsultationsController {
   constructor(private readonly service: ConsultationsService) {}
-  @Get() @ApiOperation({ summary: 'Listar consultas' }) list(@CurrentUser() user: JwtUser) { return this.service.list(user); }
-  @Post() @ApiOperation({ summary: 'Agendar consulta (PROFESSIONAL)' }) create(@CurrentUser() user: JwtUser, @Body() dto: CreateConsultationDto) { return this.service.create(user, dto); }
-  @Patch(':id') @ApiOperation({ summary: 'Editar consulta (PROFESSIONAL)' }) update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateConsultationDto) { return this.service.update(user, id, dto); }
-  @Patch(':id/cancel') @ApiOperation({ summary: 'Cancelar consulta' }) cancel(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.cancel(user, id); }
-  @Patch(':id/payment') @ApiOperation({ summary: 'Confirmar pagamento PIX' }) confirm(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.confirmPayment(user, id); }
+  @Get() @ApiOperation({ summary: 'List consultations' }) list(@CurrentUser() user: JwtUser) { return this.service.list(user); }
+  @Post() @ApiOperation({ summary: 'Book a consultation (PROFESSIONAL)' }) create(@CurrentUser() user: JwtUser, @Body() dto: CreateConsultationDto) { return this.service.create(user, dto); }
+  @Patch(':id') @ApiOperation({ summary: 'Edit a consultation (PROFESSIONAL)' }) update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateConsultationDto) { return this.service.update(user, id, dto); }
+  @Patch(':id/cancel') @ApiOperation({ summary: 'Cancel a consultation' }) cancel(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.cancel(user, id); }
+  @Patch(':id/payment') @ApiOperation({ summary: 'Confirm a PIX payment' }) confirm(@CurrentUser() user: JwtUser, @Param('id') id: string) { return this.service.confirmPayment(user, id); }
 }
 
 
@@ -710,17 +726,17 @@ class ConsultationsController {
 @Controller('assessments')
 class AssessmentsController {
   constructor(private readonly service: AssessmentsService) {}
-  @Post() @ApiOperation({ summary: 'Registrar autoavaliação (PATIENT)' }) create(@CurrentUser() user: JwtUser, @Body() dto: AssessmentDto) { return this.service.create(user, dto); }
-  @Get(':patientId') @ApiOperation({ summary: 'Listar avaliações de um paciente' }) list(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string) { return this.service.list(user, patientId); }
+  @Post() @ApiOperation({ summary: 'Record the daily self-assessment (PATIENT)' }) create(@CurrentUser() user: JwtUser, @Body() dto: AssessmentDto) { return this.service.create(user, dto); }
+  @Get(':patientId') @ApiOperation({ summary: 'List a patient self-assessment history' }) list(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string) { return this.service.list(user, patientId); }
 }
 
 @ApiTags('guidelines')
 @ApiBearerAuth('JWT-auth')
 @Controller('guidelines')
 class GuidelinesController {
-  constructor(private readonly service: AssessmentsService) {}
-  @Get(':patientId') @ApiOperation({ summary: 'Listar orientações de um paciente' }) list(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string) { return this.service.guidelines(user, patientId); }
-  @Post(':patientId') @ApiOperation({ summary: 'Adicionar orientação (PROFESSIONAL)' }) add(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string, @Body() dto: GuidelineDto) { return this.service.addGuideline(user, patientId, dto); }
+  constructor(private readonly service: GuidelinesService) {}
+  @Get(':patientId') @ApiOperation({ summary: 'List the guidelines sent to a patient' }) list(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string) { return this.service.list(user, patientId); }
+  @Post(':patientId') @ApiOperation({ summary: 'Send a guideline to a patient (PROFESSIONAL)' }) add(@CurrentUser() user: JwtUser, @Param('patientId') patientId: string, @Body() dto: GuidelineDto) { return this.service.add(user, patientId, dto); }
 }
 
 @ApiTags('chat')
@@ -728,9 +744,9 @@ class GuidelinesController {
 @Controller('chat/messages')
 class ChatController {
   constructor(private readonly service: ChatService) {}
-  @Post() @ApiOperation({ summary: 'Enviar mensagem' }) send(@CurrentUser() user: JwtUser, @Body() dto: MessageDto) { return this.service.send(user, dto); }
+  @Post() @ApiOperation({ summary: 'Send a message' }) send(@CurrentUser() user: JwtUser, @Body() dto: MessageDto) { return this.service.send(user, dto); }
   @Get('sync')
-  @ApiOperation({ summary: 'Sincronizar mensagens (polling)' })
+  @ApiOperation({ summary: 'Sync messages (polling)' })
   sync(
     @CurrentUser() user: JwtUser,
     @Query('partnerId') partnerId: string,
@@ -741,7 +757,7 @@ class ChatController {
   }
 
   @Get('unread')
-  @ApiOperation({ summary: 'Verificar se existem mensagens não lidas' })
+  @ApiOperation({ summary: 'Check for unread messages' })
   unread(@CurrentUser() user: JwtUser) {
     return this.service.unreadCount(user);
   }
@@ -752,11 +768,11 @@ class ChatController {
 @Controller('reports')
 class ReportsController {
   constructor(private readonly service: ReportsService) {}
-  @Get('export') @ApiOperation({ summary: 'Exportar Carnê-Leão por competência (PROFESSIONAL)' }) export(@CurrentUser() user: JwtUser, @Query('month') month: string, @Query('year') year: string) { return this.service.export(user, Number(month), Number(year)); }
+  @Get('export') @ApiOperation({ summary: 'Export the Carnê-Leão ledger for a month (PROFESSIONAL)' }) export(@CurrentUser() user: JwtUser, @Query('month') month: string, @Query('year') year: string) { return this.service.export(user, Number(month), Number(year)); }
 }
 
 @Module({
   controllers: [CareController, ConsultationsController, AssessmentsController, GuidelinesController, ChatController, ReportsController],
-  providers: [AccessService, DashboardService, ConsultationsService, AssessmentsService, ChatService, ReportsService],
+  providers: [AccessService, DashboardService, ConsultationsService, AssessmentsService, GuidelinesService, ChatService, ReportsService],
 })
 export class CareModule {}

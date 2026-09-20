@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { Logo } from '../components/Logo';
@@ -15,7 +10,7 @@ export default function OnboardingInvite() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [psychologistName, setPsychologistName] = useState('');
+  const [professionalName, setPsychologistName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,7 +23,7 @@ export default function OnboardingInvite() {
 
       try {
         const response = await api.get(`/auth/invitations/${encodeURIComponent(token)}`);
-        setPsychologistName(response.data.professionalName || response.data.psychologistName);
+        setPsychologistName(response.data.professionalName || response.data.professionalName);
       } catch (err: any) {
         console.error(err);
         const errMsg = err.response?.data?.message || 'Código de convite inválido ou já expirado.';
@@ -44,7 +39,7 @@ export default function OnboardingInvite() {
 
   const handleAccept = () => {
     // Redirect to register, passing the token in the URL query params
-    navigate(`/cadastro?token=${token}`);
+    navigate(`/signup?token=${token}`);
   };
 
   return (
@@ -87,7 +82,7 @@ export default function OnboardingInvite() {
               <div className="flex flex-col gap-2">
                 <h3 className="text-lg font-bold text-[#2C332D]">Você foi convidado(a)!</h3>
                 <p className="text-sm text-[#6D736E]">
-                  O profissional <strong className="text-[#2C332D]">{psychologistName}</strong> convidou você para vincular sua conta ao consultório no Ojanuan.
+                  O profissional <strong className="text-[#2C332D]">{professionalName}</strong> convidou você para vincular sua conta ao consultório no Ojanuan.
                 </p>
               </div>
 

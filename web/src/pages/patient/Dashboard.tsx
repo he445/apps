@@ -1,49 +1,42 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Button, Card, Input, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
 import { 
-  Heart, 
   Smile, 
   BedDouble, 
   Zap, 
   AlertTriangle, 
   Users, 
-  MessageSquare,
   Sparkles,
   BookOpen,
   CalendarCheck
 } from 'lucide-react';
 
-interface Orientation {
+interface Guideline {
   id: string;
   title: string;
   content: string;
   date: string;
 }
 
-export default function DashboardPaciente() {
+export default function PatientDashboard() {
   const navigate = useNavigate();
-  const [orientations, setOrientations] = useState<Orientation[]>([]);
+  const [guidelines, setOrientations] = useState<Guideline[]>([]);
   const [hasEvaluatedToday, setHasEvaluatedToday] = useState(false);
-  const [psychologistName, setPsychologistName] = useState('');
+  const [professionalName, setPsychologistName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [switchingPsychologist, setSwitchingPsychologist] = useState(false);
 
   // Form values
-  const [humor, setHumor] = useState<number>(3);
-  const [sono, setSono] = useState<number>(3);
-  const [energia, setEnergia] = useState<number>(3);
-  const [ansiedade, setAnsiedade] = useState<number>(3);
+  const [mood, setMood] = useState<number>(3);
+  const [sleep, setSleep] = useState<number>(3);
+  const [energy, setEnergy] = useState<number>(3);
+  const [anxiety, setAnxiety] = useState<number>(3);
   const [social, setSocial] = useState<boolean>(true);
-  const [nota, setNota] = useState('');
+  const [note, setNote] = useState('');
   const [savingLog, setSavingLog] = useState(false);
 
   // Calculated Index
@@ -52,19 +45,19 @@ export default function DashboardPaciente() {
   const fetchDashboardData = async () => {
     try {
       const response = await api.get('/care/patient/dashboard');
-      setOrientations(response.data.orientations);
-      setPsychologistName(response.data.psychologistName);
+      setOrientations(response.data.guidelines);
+      setPsychologistName(response.data.professionalName);
       setHasEvaluatedToday(response.data.hasEvaluatedToday);
 
       const todaysMood = response.data.todaysMood;
       if (todaysMood) {
-        setHumor(todaysMood.humor_geral);
-        setSono(todaysMood.qualidade_sono);
-        setEnergia(todaysMood.nivel_energia);
-        setAnsiedade(todaysMood.nivel_ansiedade);
-        setSocial(todaysMood.interacao_social);
-        setNota(todaysMood.nota || '');
-        setWellBeingIndex(todaysMood.indice_bem_estar);
+        setMood(todaysMood.moodScore);
+        setSleep(todaysMood.sleepScore);
+        setEnergy(todaysMood.energyScore);
+        setAnxiety(todaysMood.anxietyScore);
+        setSocial(todaysMood.socialInteraction);
+        setNote(todaysMood.note || '');
+        setWellBeingIndex(todaysMood.wellbeingIndex);
       } else {
         setWellBeingIndex(null);
       }
@@ -86,17 +79,17 @@ export default function DashboardPaciente() {
 
     try {
       const response = await api.post('/assessments', {
-        humor_geral: humor,
-        qualidade_sono: sono,
-        nivel_energia: energia,
-        nivel_ansiedade: ansiedade,
-        interacao_social: social,
-        nota: nota || undefined,
+        moodScore: mood,
+        sleepScore: sleep,
+        energyScore: energy,
+        anxietyScore: anxiety,
+        socialInteraction: social,
+        note: note || undefined,
       });
 
       toast.success(hasEvaluatedToday ? 'Autoavaliação diária atualizada!' : 'Autoavaliação diária registrada!');
       setHasEvaluatedToday(true);
-      setWellBeingIndex(response.data.indice_bem_estar);
+      setWellBeingIndex(response.data.wellbeingIndex);
     } catch (err: any) {
       console.error(err);
       toast.error('Erro ao enviar avaliação.');
@@ -115,8 +108,8 @@ export default function DashboardPaciente() {
     setSwitchingPsychologist(true);
     try {
       const response = await api.post('/care/patient/invitations/accept', { token: inviteCode.trim() });
-      setPsychologistName(response.data.psychologistName || 'Psicólogo vinculado');
-      toast.success(`Vínculo atualizado com ${response.data.psychologistName || 'o profissional selecionado'}.`);
+      setPsychologistName(response.data.professionalName || 'Psicólogo vinculado');
+      toast.success(`Vínculo atualizado com ${response.data.professionalName || 'o profissional selecionado'}.`);
       setInviteCode('');
     } catch (err: any) {
       const message = err.response?.data?.message || 'Não foi possível aplicar o convite.';
@@ -176,7 +169,7 @@ export default function DashboardPaciente() {
             Olá! Que bom ter você aqui hoje.
           </h1>
           <p className="text-sm text-[#6D736E]">
-            Seu acompanhamento é feito em parceria com <strong className="text-[#2C332D]">{loading ? '...' : psychologistName}</strong>.
+            Seu acompanhamento é feito em parceria com <strong className="text-[#2C332D]">{loading ? '...' : professionalName}</strong>.
           </p>
         </div>
 
@@ -242,8 +235,8 @@ export default function DashboardPaciente() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {renderOptionSelector(
                     'Humor Geral', 
-                    humor, 
-                    setHumor, 
+                    mood, 
+                    setMood, 
                     'Péssimo', 
                     'Excelente', 
                     <Smile className="h-4 w-4 text-[#C16E59]" />
@@ -251,8 +244,8 @@ export default function DashboardPaciente() {
 
                   {renderOptionSelector(
                     'Qualidade do Sono', 
-                    sono, 
-                    setSono, 
+                    sleep, 
+                    setSleep, 
                     'Péssima noite', 
                     'Dormi muito bem', 
                     <BedDouble className="h-4 w-4 text-[#7A8B76]" />
@@ -260,8 +253,8 @@ export default function DashboardPaciente() {
 
                   {renderOptionSelector(
                     'Nível de Energia Física', 
-                    energia, 
-                    setEnergia, 
+                    energy, 
+                    setEnergy, 
                     'Esgotado(a)', 
                     'Muito disposto(a)', 
                     <Zap className="h-4 w-4 text-amber-500" />
@@ -269,8 +262,8 @@ export default function DashboardPaciente() {
 
                   {renderOptionSelector(
                     'Nível de Ansiedade', 
-                    ansiedade, 
-                    setAnsiedade, 
+                    anxiety, 
+                    setAnxiety, 
                     'Super calmo(a)', 
                     'Altamente ansioso(a)', 
                     <AlertTriangle className="h-4 w-4 text-[#B54B3C]" />
@@ -312,16 +305,16 @@ export default function DashboardPaciente() {
 
                 {/* Optional textual notes */}
                 <div className="flex flex-col gap-1.5 mt-2">
-                  <label htmlFor="nota" className="text-xs font-semibold text-[#6D736E] uppercase tracking-wider">
+                  <label htmlFor="note" className="text-xs font-semibold text-[#6D736E] uppercase tracking-wider">
                     Nota ou Diário Emocional (Opcional e Confidencial)
                   </label>
                   <textarea
-                    id="nota"
+                    id="note"
                     rows={4}
                     placeholder="Escreva algo sobre o seu dia, sentimentos, pensamentos ou acontecimentos importantes..."
                     className="w-full px-4 py-3 border border-[#6D736E]/30 rounded-lg text-sm bg-white text-[#2C332D] focus:outline-none focus:ring-2 focus:ring-[#7A8B76] focus:border-[#7A8B76]"
-                    value={nota}
-                    onChange={(e) => setNota(e.target.value)}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
                   />
                 </div>
 
@@ -346,7 +339,7 @@ export default function DashboardPaciente() {
           {/* Quick Agenda Link Card */}
           <Card 
             className="bg-[#7A8B76]/10 border border-[#7A8B76]/20 p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-[#7A8B76]/15 transition-all shadow-2xs"
-            onClick={() => navigate('/paciente/agenda')}
+            onClick={() => navigate('/patient/schedule')}
           >
             <div className="flex items-center gap-3.5">
               <div className="bg-[#7A8B76] text-white p-3 rounded-xl">
@@ -372,7 +365,7 @@ export default function DashboardPaciente() {
               <Skeleton className="h-28 w-full" />
               <Skeleton className="h-28 w-full" />
             </div>
-          ) : orientations.length === 0 ? (
+          ) : guidelines.length === 0 ? (
             <Card className="bg-[#7A8B76]/5 border border-[#7A8B76]/10 text-center p-6 text-[#6D736E] text-sm rounded-xl">
               <Sparkles className="h-8 w-8 text-[#7A8B76]/50 mx-auto mb-2" />
               <p className="font-bold text-[#2C332D]">Seu mural está vazio</p>
@@ -380,7 +373,7 @@ export default function DashboardPaciente() {
             </Card>
           ) : (
             <div className="flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-1">
-              {orientations.map((o) => (
+              {guidelines.map((o) => (
                 <Card key={o.id} className="border-l-4 border-l-[#C16E59] shadow-2xs p-4">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">

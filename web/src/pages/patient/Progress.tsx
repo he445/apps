@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Card, Skeleton } from '../../components/UI';
@@ -18,20 +13,20 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
-import { TrendingUp, Smile, Calendar, Heart, ShieldCheck } from 'lucide-react';
+import { TrendingUp, Smile, Heart, ShieldCheck } from 'lucide-react';
 
 interface MoodLog {
   id: string;
   date: string;
-  humor_geral: number;
-  qualidade_sono: number;
-  nivel_energia: number;
-  nivel_ansiedade: number;
-  indice_bem_estar: number;
-  nota?: string;
+  moodScore: number;
+  sleepScore: number;
+  energyScore: number;
+  anxietyScore: number;
+  wellbeingIndex: number;
+  note?: string;
 }
 
-export default function ProgressoPaciente() {
+export default function PatientProgress() {
   const { user } = useAuth();
   const [evaluations, setEvaluations] = useState<MoodLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,13 +55,13 @@ export default function ProgressoPaciente() {
   // Format Recharts data
   const chartData = evaluations.map((e) => ({
     Data: e.date.substring(5), // Keep only MM-DD
-    'Humor Geral': e.humor_geral,
-    'Índice de Bem-Estar': parseFloat(e.indice_bem_estar.toFixed(2)),
+    'Humor Geral': e.moodScore,
+    'Índice de Bem-Estar': parseFloat(e.wellbeingIndex.toFixed(2)),
   }));
 
   // Calculations for average wellness
   const averageWellness = evaluations.length > 0 
-    ? (evaluations.reduce((acc, e) => acc + e.indice_bem_estar, 0) / evaluations.length).toFixed(2)
+    ? (evaluations.reduce((acc, e) => acc + e.wellbeingIndex, 0) / evaluations.length).toFixed(2)
     : '0.00';
 
   const totalEntries = evaluations.length;

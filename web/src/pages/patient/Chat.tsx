@@ -1,16 +1,11 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useChatPolling } from '../../hooks/useChatPolling';
 import { api } from '../../services/api';
-import { Card, Button, Skeleton } from '../../components/UI';
+import { Button, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
-import { Send, MessageCircle, RefreshCw, User } from 'lucide-react';
+import { Send, MessageCircle, User } from 'lucide-react';
 
 interface ChatPartner {
   id: string;
@@ -48,11 +43,11 @@ export default function Chat() {
           }
         } else {
           const response = await api.get('/care/patient/dashboard');
-          const psychologistId = response.data.psychologistId || response.data.professionalId;
-          if (psychologistId) {
+          const professionalId = response.data.professionalId || response.data.professionalId;
+          if (professionalId) {
             const partner: ChatPartner = {
-              id: psychologistId,
-              name: response.data.psychologistName,
+              id: professionalId,
+              name: response.data.professionalName,
               role: 'PROFESSIONAL',
             };
             setPartners([partner]);
@@ -183,7 +178,7 @@ export default function Chat() {
                   Para ativar o chat terapêutico, você precisa estar vinculado a um psicólogo. Insira o código de convite recebido no seu painel principal.
                 </p>
               </div>
-              <Button onClick={() => window.location.assign('/paciente/dashboard')} variant="secondary" className="text-xs px-4 py-2">
+              <Button onClick={() => window.location.assign('/patient/dashboard')} variant="secondary" className="text-xs px-4 py-2">
                 Ir para o Início / Vincular Convite
               </Button>
             </div>

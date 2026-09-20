@@ -1,17 +1,11 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { AdminOverviewData, RouteTelemetry, ErrorLogEntry, ProNetworkItem } from '../../types';
+import { AdminOverviewData, RouteTelemetry, ErrorLogEntry } from '../../types';
 import { toast } from 'sonner';
 import {
   Users,
   UserCheck,
-  UserPlus,
   Stethoscope,
   DollarSign,
   Activity,
@@ -19,15 +13,12 @@ import {
   ShieldAlert,
   Trash2,
   Play,
-  RotateCcw,
   Sparkles,
   ChevronDown,
   ChevronRight,
   Clock,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
-  Send,
   Eye,
   RefreshCw,
   Terminal,

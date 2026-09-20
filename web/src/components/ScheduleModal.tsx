@@ -10,7 +10,7 @@ interface Patient {
   email: string;
 }
 
-interface ModalAgendamentoProps {
+interface ScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -46,7 +46,7 @@ const TIME_PRESETS = [
   '14:00', '15:00', '16:00', '17:00', '18:00',
 ];
 
-export const ModalAgendamento: React.FC<ModalAgendamentoProps> = ({
+export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
@@ -128,10 +128,10 @@ export const ModalAgendamento: React.FC<ModalAgendamentoProps> = ({
       return;
     }
 
-    // Envia o instante com o fuso do navegador explícito. Antes a string ia sem
+    // Sends the instant with the browser's offset spelled out. The string used to go
     // fuso ("2026-09-02T14:00:00") e o servidor, rodando em UTC, a lia como 14h UTC
-    // — três horas adiantado para quem marcou 14h em São Paulo. O backend agora
-    // recusa data sem fuso, então o offset é obrigatório.
+    // — three hours ahead for anyone booking 14:00 in São Paulo. The backend now
+    // rejects a date without a zone, so the offset is required.
     const [hh, mm] = time.split(':').map(Number);
     const [yyyy, mo, dd] = date.split('-').map(Number);
     const localDateTime = new Date(yyyy, mo - 1, dd, hh, mm, 0, 0);

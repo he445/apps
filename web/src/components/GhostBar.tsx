@@ -1,11 +1,6 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldAlert, ArrowLeft, Eye } from 'lucide-react';
+import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export const GhostBar: React.FC = () => {
   const { user, isImpersonated, exitImpersonation } = useAuth();

@@ -1,15 +1,9 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { Button, Card, Skeleton } from '../../components/UI';
 import { toast } from 'sonner';
 import { 
   Download, 
-  DollarSign, 
   Calendar, 
   FileSpreadsheet, 
   AlertCircle,
@@ -28,26 +22,26 @@ interface SessionFinance {
   price: number;
 }
 
-const MESES = [
+const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
-// A validação do backend recusa competência anterior a 2020.
-const ANOS = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i).reverse();
+// The backend rejects any period before 2020.
+const YEARS = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i).reverse();
 
 interface CarneLeaoRow {
-  paciente: string;
+  patientName: string;
   cpf: string | null;
   dates: string[];
   total: number;
 }
 
-export default function FinanceiroPro() {
+export default function ProfessionalFinance() {
   const [sessions, setSessions] = useState<SessionFinance[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const agora = new Date();
-  const [competencia, setCompetencia] = useState({ month: agora.getMonth() + 1, year: agora.getFullYear() });
+  const now = new Date();
+  const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
 
   useEffect(() => {
     const fetchFinance = async () => {
@@ -87,50 +81,50 @@ export default function FinanceiroPro() {
   const totalSessionsCount = sessions.length;
 
   /**
-   * O CSV anterior era montado a partir de TODAS as consultas: incluía pendentes e
-   * canceladas, usava a data da consulta e não agrupava por pagador. O Carnê-Leão é
-   * regime de caixa — apura pelo valor efetivamente recebido, na competência do
-   * recebimento, por pagador. O backend já implementa isso em GET /reports/export;
-   * a tela só não o chamava.
+   * The previous CSV was built from ALL consultations: it included pending and
+   * cancelled ones, used the session date and did not group by payer. Carnê-Leão is
+   * cash-basis — it reports what was actually received, in the month it was received,
+   * per payer. The backend already does this in GET /reports/export; the screen simply
+   * was not calling it.
    */
   const exportToCSV = async () => {
     setExporting(true);
     try {
       const { data } = await api.get('/reports/export', {
-        params: { month: competencia.month, year: competencia.year },
+        params: { month: period.month, year: period.year },
       });
 
-      const linhas: CarneLeaoRow[] = Array.isArray(data) ? data : [];
-      if (linhas.length === 0) {
+      const payers: CarneLeaoRow[] = Array.isArray(data) ? data : [];
+      if (payers.length === 0) {
         toast.error('Nenhum recebimento registrado nesta competência.');
         return;
       }
 
       const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const headers = ['Pagador', 'CPF', 'Datas dos atendimentos', 'Qtd. sessoes', 'Total recebido (R$)'];
-      const rows = linhas.map((r) => [
-        esc(r.paciente),
-        esc(r.cpf || 'Nao informado'),
-        esc(r.dates.map((d) => d.split('-').reverse().join('/')).join(' | ')),
-        String(r.dates.length),
-        r.total.toFixed(2).replace('.', ','),
+      const rows = payers.map((payer) => [
+        esc(payer.patientName),
+        esc(payer.cpf || 'Nao informado'),
+        esc(payer.dates.map((d) => d.split('-').reverse().join('/')).join(' | ')),
+        String(payer.dates.length),
+        payer.total.toFixed(2).replace('.', ','),
       ]);
-      const totalGeral = linhas.reduce((acc, r) => acc + r.total, 0);
-      rows.push(['"TOTAL"', '""', '""', '', totalGeral.toFixed(2).replace('.', ',')]);
+      const grandTotal = payers.reduce((acc, payer) => acc + payer.total, 0);
+      rows.push(['"TOTAL"', '""', '""', '', grandTotal.toFixed(2).replace('.', ',')]);
 
-      // Separador ';' e BOM para o Excel em português abrir sem passo de importação.
+      // ';' separator plus a BOM so Excel in pt-BR opens it without an import step.
       const csv = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ojanuan_carne_leao_${competencia.year}-${String(competencia.month).padStart(2, '0')}.csv`;
+      link.download = `ojanuan_carne_leao_${period.year}-${String(period.month).padStart(2, '0')}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      toast.success(`Carnê-Leão de ${String(competencia.month).padStart(2, '0')}/${competencia.year} exportado.`);
+      toast.success(`Carnê-Leão de ${String(period.month).padStart(2, '0')}/${period.year} exportado.`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Não foi possível gerar o relatório.');
     } finally {
@@ -158,31 +152,31 @@ export default function FinanceiroPro() {
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex gap-2">
             <div className="flex flex-col gap-1">
-              <label htmlFor="competencia-mes" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
+              <label htmlFor="period-mes" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
                 Mês
               </label>
               <select
-                id="competencia-mes"
-                value={competencia.month}
-                onChange={(e) => setCompetencia((c) => ({ ...c, month: Number(e.target.value) }))}
+                id="period-mes"
+                value={period.month}
+                onChange={(e) => setPeriod((c) => ({ ...c, month: Number(e.target.value) }))}
                 className="px-3 py-2.5 rounded-xl border border-[#7A8B76]/25 bg-white text-sm text-[#2C332D] focus:outline-none focus:ring-2 focus:ring-[#7A8B76]/30"
               >
-                {MESES.map((nome, i) => (
+                {MONTHS.map((nome, i) => (
                   <option key={nome} value={i + 1}>{nome}</option>
                 ))}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="competencia-ano" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
+              <label htmlFor="period-ano" className="text-[11px] font-bold text-[#6D736E] uppercase tracking-wider">
                 Ano
               </label>
               <select
-                id="competencia-ano"
-                value={competencia.year}
-                onChange={(e) => setCompetencia((c) => ({ ...c, year: Number(e.target.value) }))}
+                id="period-ano"
+                value={period.year}
+                onChange={(e) => setPeriod((c) => ({ ...c, year: Number(e.target.value) }))}
                 className="px-3 py-2.5 rounded-xl border border-[#7A8B76]/25 bg-white text-sm text-[#2C332D] focus:outline-none focus:ring-2 focus:ring-[#7A8B76]/30"
               >
-                {ANOS.map((ano) => (
+                {YEARS.map((ano) => (
                   <option key={ano} value={ano}>{ano}</option>
                 ))}
               </select>
@@ -229,7 +223,7 @@ export default function FinanceiroPro() {
           </div>
         </Card>
 
-        {/* Total Consultas */}
+        {/* Total consultations */}
         <Card className="border-l-4 border-l-[#6D736E] shadow-2xs">
           <div className="flex justify-between items-center">
             <div className="flex flex-col gap-1">

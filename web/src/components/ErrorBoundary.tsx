@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
@@ -14,8 +9,8 @@ interface State {
 }
 
 /**
- * Sem esta barreira, um erro de render em qualquer página derrubava a árvore
- * inteira e deixava a tela branca, sem mensagem e sem caminho de recuperação.
+ * Without this boundary a render error on any page took down the whole tree and left
+ * a blank screen, with no message and no way to recover.
  */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {

@@ -1,15 +1,10 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card, Modal } from '../components/UI';
 import { toast } from 'sonner';
 import { ShieldAlert, Trash2, Key, UserCheck, AlertTriangle } from 'lucide-react';
 
-export default function Perfil() {
+export default function Profile() {
   const { user, updateProfile, deleteAccount, isProfessional } = useAuth();
   
   // Profile Form States
@@ -241,7 +236,7 @@ export default function Perfil() {
 
       </div>
 
-      {/* Exclusão de Conta Confirmação Modal */}
+      {/* Account deletion confirmation modal */}
       <Modal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}

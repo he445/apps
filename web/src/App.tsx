@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,34 +5,34 @@ import { LayoutBase } from './components/LayoutBase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from 'sonner';
 
-// Páginas carregadas sob demanda: cada uma vira um chunk próprio, baixado só quando
-// a rota é visitada. Antes, um paciente que abria só o próprio painel baixava
-// também o dashboard administrativo (766 linhas) e o Recharts inteiro, tudo dentro
-// de um único bundle de 862 KB. Os guards de rota abaixo continuam import estático
-// — são pequenos e vivem neste mesmo arquivo, não geram chunk separado de qualquer forma.
+// Pages are loaded on demand: each becomes its own chunk, downloaded only when the
+// route is visited. A patient opening just their own panel used to also download the
+// admin dashboard and the whole of Recharts, inside a single 862 KB bundle. The route
+// guards below stay static imports — they are small and live in this same file, so
+// they would not get a separate chunk anyway.
 const Login = lazy(() => import('./pages/Login'));
-const Cadastro = lazy(() => import('./pages/Cadastro'));
+const SignUp = lazy(() => import('./pages/SignUp'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const OnboardingInvite = lazy(() => import('./pages/OnboardingInvite'));
-const Perfil = lazy(() => import('./pages/Perfil'));
+const Profile = lazy(() => import('./pages/Profile'));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 
 // Pro Pages
-const DashboardPro = lazy(() => import('./pages/pro/Dashboard'));
-const PacienteDetail = lazy(() => import('./pages/pro/PacienteDetail'));
-const FinanceiroPro = lazy(() => import('./pages/pro/Financeiro'));
-const AgendaPro = lazy(() => import('./pages/pro/Agenda'));
+const ProfessionalDashboard = lazy(() => import('./pages/pro/Dashboard'));
+const PatientDetail = lazy(() => import('./pages/pro/PatientDetail'));
+const ProfessionalFinance = lazy(() => import('./pages/pro/Finance'));
+const ProfessionalSchedule = lazy(() => import('./pages/pro/Schedule'));
 
 // Patient Pages
-const DashboardPaciente = lazy(() => import('./pages/paciente/Dashboard'));
-const ProgressoPaciente = lazy(() => import('./pages/paciente/Progresso'));
-const Chat = lazy(() => import('./pages/paciente/Chat'));
-const FinanceiroPaciente = lazy(() => import('./pages/paciente/Financeiro'));
-const AgendaPaciente = lazy(() => import('./pages/paciente/Agenda'));
+const PatientDashboard = lazy(() => import('./pages/patient/Dashboard'));
+const PatientProgress = lazy(() => import('./pages/patient/Progress'));
+const Chat = lazy(() => import('./pages/patient/Chat'));
+const PatientFinance = lazy(() => import('./pages/patient/Finance'));
+const PatientSchedule = lazy(() => import('./pages/patient/Schedule'));
 
-// Mesmo spinner já usado pelos guards abaixo enquanto o chunk da rota carrega.
+// The same spinner the guards below use, shown while the route chunk loads.
 const RouteFallback: React.FC = () => (
   <div className="min-h-screen flex items-center justify-center bg-[#F9F8F4]">
     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7A8B76]" />
@@ -75,7 +70,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   if (isAuthenticated) {
     if (isAdmin) return <Navigate to="/admin/dashboard" replace />;
-    return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/paciente/dashboard" replace />;
+    return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/patient/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -118,7 +113,7 @@ const RootRedirect: React.FC = () => {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/admin/dashboard" replace />;
-  return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/paciente/dashboard" replace />;
+  return isProfessional ? <Navigate to="/pro/dashboard" replace /> : <Navigate to="/patient/dashboard" replace />;
 };
 
 export default function App() {
@@ -131,13 +126,13 @@ export default function App() {
           <Routes>
             {/* PUBLIC ROUTES */}
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/cadastro" element={<PublicRoute><Cadastro /></PublicRoute>} />
-            <Route path="/esqueci-minha-senha" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-            <Route path="/convite/:token" element={<PublicRoute><OnboardingInvite /></PublicRoute>} />
+            <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+            <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/invite/:token" element={<PublicRoute><OnboardingInvite /></PublicRoute>} />
 
             {/* PRIVATE / COMMON ROUTES */}
-            <Route path="/perfil" element={<PrivateRoute><Perfil /></PrivateRoute>} />
-            <Route path="/paciente/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/patient/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
 
             {/* ADMIN SECURED ROUTES */}
             <Route
@@ -157,37 +152,37 @@ export default function App() {
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PROFESSIONAL">
-                    <DashboardPro />
+                    <ProfessionalDashboard />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/pro/paciente/:id"
+              path="/pro/patient/:id"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PROFESSIONAL">
-                    <PacienteDetail />
+                    <PatientDetail />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/pro/financeiro"
+              path="/pro/finance"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PROFESSIONAL">
-                    <FinanceiroPro />
+                    <ProfessionalFinance />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/pro/agenda"
+              path="/pro/schedule"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PROFESSIONAL">
-                    <AgendaPro />
+                    <ProfessionalSchedule />
                   </RoleGuard>
                 </PrivateRoute>
               }
@@ -195,41 +190,41 @@ export default function App() {
 
             {/* PATIENT SECURED ROUTES */}
             <Route
-              path="/paciente/dashboard"
+              path="/patient/dashboard"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PATIENT">
-                    <DashboardPaciente />
+                    <PatientDashboard />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/paciente/agenda"
+              path="/patient/schedule"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PATIENT">
-                    <AgendaPaciente />
+                    <PatientSchedule />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/paciente/progresso"
+              path="/patient/progress"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PATIENT">
-                    <ProgressoPaciente />
+                    <PatientProgress />
                   </RoleGuard>
                 </PrivateRoute>
               }
             />
             <Route
-              path="/paciente/financeiro"
+              path="/patient/finance"
               element={
                 <PrivateRoute>
                   <RoleGuard allowedRole="PATIENT">
-                    <FinanceiroPaciente />
+                    <PatientFinance />
                   </RoleGuard>
                 </PrivateRoute>
               }

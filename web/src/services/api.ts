@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import axios from 'axios';
 
 const AUTH_TOKEN_KEY = 'ojanuan_token';
@@ -45,7 +40,7 @@ const getApiBaseUrl = () => {
   if (import.meta.env.DEV) {
     return '/api';
   }
-  // Em produção (Vercel), aponta diretamente para a API no Render
+  // In production (Vercel) this points straight at the API on Render.
   return 'https://ojanuan-api.onrender.com/api/v1';
 };
 
@@ -78,7 +73,7 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       const reqUrl = error.config?.url || '';
       const isPublicRoute = reqUrl.includes('/auth/invitation') || reqUrl.includes('/invitations') || reqUrl.includes('/auth/login') || reqUrl.includes('/auth/register');
-      const isPublicPath = window.location.pathname.includes('/login') || window.location.pathname.includes('/cadastro') || window.location.pathname.includes('/convite');
+      const isPublicPath = window.location.pathname.includes('/login') || window.location.pathname.includes('/signup') || window.location.pathname.includes('/invite');
 
       if (!isPublicRoute && !isPublicPath) {
         console.warn('Unauthorized or session expired, logging out...');

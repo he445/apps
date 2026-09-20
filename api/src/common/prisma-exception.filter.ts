@@ -5,21 +5,21 @@ import { Response } from 'express';
 /**
  * Traduz erros do Prisma para respostas HTTP com significado.
  *
- * Sem este filtro, uma violação de índice único (P2002) subia como 500 genérico —
- * inclusive no cadastro, onde a checagem de e-mail duplicado é feita com
- * findUnique seguido de create e ainda pode colidir sob concorrência, já que o
- * nível de isolamento padrão do PostgreSQL é read committed.
+ * Without this filter a unique-index violation (P2002) surfaced as a generic 500 —
+ * including on sign-up, where the duplicate e-mail check is a findUnique followed by a
+ * create and can still collide under concurrency, since PostgreSQL's default isolation
+ * level is read committed.
  */
 /**
- * Traduz um erro do Prisma para a exceção HTTP equivalente.
+ * Translates a Prisma error into the equivalent HTTP exception.
  *
  * Exportada (em vez de privada ao filtro) porque o TelemetryInterceptor precisa da
  * mesma regra: sem ela, o interceptor via o erro cru do Prisma antes do filtro atuar
- * e classificava tudo como 500, mesmo quando o cliente já recebia 409/404 corretos.
+ * and classified everything as 500, even when the client already got a correct 409/404.
  */
 export function mapPrismaError(exception: Prisma.PrismaClientKnownRequestError | Prisma.PrismaClientValidationError): HttpException {
   if (!(exception instanceof Prisma.PrismaClientKnownRequestError)) {
-    // Erro de forma da query: é defeito de código, não entrada do usuário.
+    // Malformed query: a code defect, not user input.
     return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
   }
 
@@ -36,7 +36,7 @@ export function mapPrismaError(exception: Prisma.PrismaClientKnownRequestError |
     case 'P2003':
       return new ConflictException('Operação bloqueada: o registro está vinculado a outros dados.');
     default:
-      // Mensagem do Prisma pode conter nome de tabela e coluna: não é para o cliente.
+      // Prisma's message can name tables and columns: not for the client.
       return new HttpException('Erro interno ao processar a requisição.', HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }

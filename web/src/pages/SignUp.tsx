@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -10,7 +5,7 @@ import { Logo } from '../components/Logo';
 import { Button, Input, Card } from '../components/UI';
 import { toast } from 'sonner';
 
-export default function Cadastro() {
+export default function SignUp() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -55,7 +50,7 @@ export default function Cadastro() {
       if (role === 'PROFESSIONAL') {
         navigate('/pro/dashboard');
       } else {
-        navigate('/paciente/dashboard');
+        navigate('/patient/dashboard');
       }
     } catch (err: any) {
       console.error(err);
