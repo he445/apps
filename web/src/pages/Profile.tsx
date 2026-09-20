@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card, Modal } from '../components/UI';
 import { toast } from 'sonner';
-import { ShieldAlert, Trash2, Key, UserCheck, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { api } from '../services/api';
+import { ShieldAlert, Trash2, Key, UserCheck, AlertTriangle, Download } from 'lucide-react';
 
 export default function Profile() {
   const { user, updateProfile, deleteAccount, isProfessional } = useAuth();
@@ -21,6 +23,7 @@ export default function Profile() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Soft Delete Modal State
+  const [exporting, setExporting] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -64,6 +67,28 @@ export default function Profile() {
       toast.error(msg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  /** Same download mechanism the Carnê-Leão export uses, with JSON instead of CSV. */
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get('/users/me/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ojanuan_meus_dados_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success('Seus dados foram baixados.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Não foi possível gerar o arquivo.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -207,6 +232,41 @@ export default function Profile() {
           </form>
         </Card>
 
+        {/* Data subject rights (LGPD art. 18) */}
+        <Card className="shadow-xs">
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-bold text-[#2C332D] border-b border-[#6D736E]/10 pb-2 flex items-center gap-2">
+              <Download className="h-5 w-5 text-[#7A8B76]" />
+              <span>Seus Dados</span>
+            </h3>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex flex-col gap-1 max-w-xl">
+                <h4 className="text-sm font-bold text-[#2C332D]">Baixar meus dados</h4>
+                <p className="text-xs text-[#6D736E] leading-relaxed">
+                  Gera um arquivo com tudo que a plataforma guarda sobre você: cadastro,
+                  consultas, autoavaliações, orientações e mensagens — com o conteúdo
+                  clínico já legível. Faça isso antes de excluir a conta, porque a
+                  exclusão é definitiva. Veja a{' '}
+                  <Link to="/privacidade" className="font-semibold text-[#7A8B76] hover:underline">
+                    Política de Privacidade
+                  </Link>
+                  .
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={handleExportData}
+                isLoading={exporting}
+              >
+                Baixar meus dados
+              </Button>
+            </div>
+          </div>
+        </Card>
+
         {/* Danger Area / Account Deletion */}
         <Card className="border-[#B54B3C]/20 shadow-xs">
           <div className="flex flex-col gap-4">
@@ -252,6 +312,12 @@ export default function Profile() {
               </p>
             </div>
           </div>
+
+          <p className="text-xs text-[#6D736E] leading-relaxed">
+            Se ainda não baixou uma cópia dos seus dados, feche esta janela e use{' '}
+            <strong className="text-[#2C332D]">Baixar meus dados</strong> antes de
+            continuar — depois da exclusão não há como recuperá-los.
+          </p>
 
           <p className="text-xs text-[#6D736E]">
             Para confirmar que deseja excluir sua conta permanentemente, por favor digite sua senha de acesso atual:

@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, HttpCode, HttpStatus, Injectable, Module, Post, Put, UnauthorizedException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Injectable, Module, Post, Put, UnauthorizedException, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { CurrentUser, JwtUser } from '../common/auth';
+import { EncryptionService } from '../common/encryption.service';
 import { PrismaService } from '../common/prisma.service';
 import { CURRENT_PRIVACY_POLICY_VERSION } from '../auth/auth.module';
 
@@ -35,6 +36,7 @@ class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly crypto: EncryptionService,
   ) {}
 
   async eraseActiveData(user: JwtUser, passwordCheck: string) {
@@ -67,6 +69,99 @@ class UsersService {
       }),
     ]);
     return { deleted: true };
+  }
+
+  /**
+   * Everything the platform holds about the requester, decrypted (LGPD art. 18: right
+   * of access and portability).
+   *
+   * Must be taken before deleting the account — `eraseActiveData` physically removes
+   * messages, assessments and guidelines, and nothing is recoverable afterwards.
+   *
+   * The shape is explicit so no ciphertext column leaks, the same reason the clinical
+   * endpoints stopped spreading raw Prisma rows.
+   */
+  async exportOwnData(user: JwtUser) {
+    const id = user.sub;
+
+    const [account, settings, connection, invitations, consultations, assessments, guidelines, messages, auditLog] =
+      await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id },
+          select: {
+            id: true, fullName: true, email: true, role: true, cpf: true, crp: true,
+            address: true, consentedAt: true, consentVersion: true, createdAt: true,
+          },
+        }),
+        this.prisma.professionalSettings.findUnique({
+          where: { professionalId: id },
+          select: { pixKey: true, sessionDefaultPrice: true, cancellationLimitHours: true },
+        }),
+        this.prisma.professionalPatient.findFirst({
+          where: { OR: [{ patientId: id }, { professionalId: id }] },
+          select: { professionalId: true, patientId: true, createdAt: true },
+        }),
+        this.prisma.patientInvitation.findMany({
+          where: { professionalId: id },
+          select: { patientName: true, status: true, expiresAt: true, createdAt: true },
+        }),
+        this.prisma.consultation.findMany({
+          where: { OR: [{ patientId: id }, { professionalId: id }] },
+          orderBy: { dateTime: 'asc' },
+          select: {
+            dateTime: true, sessionPrice: true, status: true, billingType: true,
+            paymentStatus: true, paymentConfirmedAt: true, patientNameForTax: true,
+            patientCpfForTax: true,
+          },
+        }),
+        this.prisma.selfAssessment.findMany({ where: { patientId: id }, orderBy: { createdAt: 'asc' } }),
+        this.prisma.guideline.findMany({
+          where: { OR: [{ patientId: id }, { professionalId: id }] },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.chatMessage.findMany({
+          where: { OR: [{ senderId: id }, { receiverId: id }] },
+          orderBy: { createdAt: 'asc' },
+        }),
+        // AuditLog has no foreign key to User, so it is reached by id rather than include.
+        this.prisma.auditLog.findMany({
+          where: { OR: [{ actorId: id }, { targetId: id }] },
+          orderBy: { createdAt: 'asc' },
+          select: { action: true, details: true, createdAt: true },
+        }),
+      ]);
+
+    if (!account) throw new NotFoundException('Usuário não encontrado.');
+
+    return {
+      exportedAt: new Date(),
+      account,
+      professionalSettings: settings,
+      connection,
+      invitations,
+      consultations,
+      selfAssessments: assessments.map((row) => ({
+        date: row.createdAt,
+        moodScore: row.moodScore,
+        anxietyScore: row.anxietyScore,
+        sleepScore: row.sleepScore,
+        energyScore: row.energyScore,
+        socialInteraction: row.socialInteraction,
+        note: this.crypto.readOptional(row.encryptedNote, row.noteKeyVersion, row.quickNote),
+      })),
+      guidelines: guidelines.map((row) => ({
+        date: row.createdAt,
+        title: this.crypto.readOptional(row.encryptedTitle, row.titleKeyVersion, null),
+        text: this.crypto.read(row.encryptedText, row.textKeyVersion, row.text),
+        sentByMe: row.professionalId === id,
+      })),
+      chatMessages: messages.map((row) => ({
+        date: row.createdAt,
+        text: this.crypto.read(row.encryptedText, row.textKeyVersion, row.messageText),
+        sentByMe: row.senderId === id,
+      })),
+      auditLog,
+    };
   }
 
   /**
@@ -201,6 +296,12 @@ class UsersController {
   @ApiOperation({ summary: 'Excluir conta (LGPD Soft Delete)' })
   deleteMyAccount(@CurrentUser() user: JwtUser, @Body() dto: DeleteAccountDto) {
     return this.users.eraseActiveData(user, dto.password);
+  }
+
+  @Get('me/export')
+  @ApiOperation({ summary: 'Download every record held about the requester (LGPD art. 18)' })
+  exportOwnData(@CurrentUser() user: JwtUser) {
+    return this.users.exportOwnData(user);
   }
 
   @Post('me/consent')
