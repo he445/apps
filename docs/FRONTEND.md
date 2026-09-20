@@ -29,6 +29,7 @@ web/src/
 │   ├── Login.tsx               # Tela de autenticação
 │   ├── SignUp.tsx              # Cadastro de novo usuário (PROFESSIONAL ou PATIENT)
 │   ├── OnboardingInvite.tsx    # Fluxo de onboarding via convite (/invite/:token)
+│   ├── PrivacyPolicy.tsx       # Política de Privacidade (/privacidade)
 │   ├── ForgotPassword.tsx      # Recuperação de senha (UI)
 │   ├── Profile.tsx             # Configurações de perfil (ambos os papéis)
 │   │
@@ -44,6 +45,9 @@ web/src/
 │       ├── Chat.tsx            # Canal de mensagens com o psicólogo
 │       ├── Finance.tsx         # Histórico de sessões e cobranças
 │       └── Schedule.tsx        # Consultas agendadas e solicitações
+│
+├── content/
+│   └── privacyPolicy.ts        # Texto e versão da política, isolados do componente
 │
 ├── hooks/
 │   └── useChatPolling.ts       # Short-polling (3s) de mensagens via GET /chat/messages/sync
@@ -67,7 +71,8 @@ web/src/
 | `/login` | `Login` | Público | Autenticação |
 | `/signup` | `SignUp` | Público | Cadastro de usuário |
 | `/invite/:token` | `OnboardingInvite` | Público | Onboarding por convite |
-| `/forgot-password` | `ForgotPassword` | Público | Informa que a redefinição por e-mail ainda não existe |
+| `/forgot-password` | `ForgotPassword` | Público | Orienta a pedir redefinição ao administrador |
+| `/privacidade` | `PrivacyPolicy` | Aberto | Política de Privacidade (sem guard: legível logado e deslogado) |
 | `/profile` | `Profile` | Autenticado | Configurações de perfil |
 | `/admin/dashboard` | `admin/Dashboard` | ADMIN | Painel Administrativo, métricas, telemetria de rotas, monitor de bugs e sandbox |
 | `/pro/dashboard` | `pro/Dashboard` | PROFESSIONAL | Painel do psicólogo |

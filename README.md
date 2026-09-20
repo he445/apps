@@ -40,7 +40,7 @@ apps/
 │   ├── src/
 │   │   ├── auth/               # Autenticação JWT e gestão de convites
 │   │   ├── care/               # Consultas, autoavaliações, chat, relatórios
-│   │   ├── users/              # Perfil de usuário e exclusão de conta (LGPD)
+│   │   ├── users/              # Perfil, exportação e exclusão de conta (LGPD)
 │   │   ├── admin/               # Painel administrativo, telemetria e sandbox
 │   │   ├── common/             # Guards JWT, criptografia e Prisma Service
 │   │   └── main.ts             # Bootstrap da aplicação e Swagger UI
@@ -49,6 +49,7 @@ apps/
 ├── web/                        # Frontend React 19 (Mobile-First + Desktop) — publicado na Vercel
 │   ├── src/
 │   │   ├── components/          # LayoutBase, UI Kit (Button, Card, Modal, Skeleton)
+│   │   ├── content/              # Texto e versão da Política de Privacidade
 │   │   ├── context/              # AuthContext (Estado de autenticação global)
 │   │   ├── hooks/                 # Custom Hooks (ex: useChatPolling)
 │   │   ├── pages/                  # Telas de Pacientes, Psicólogos e Autenticação
@@ -172,6 +173,20 @@ if (user.role !== Role.PROFESSIONAL) {
 Rotas do frontend e campos da API seguem a mesma regra (`/patient/dashboard`,
 `moodScore`, `wellbeingIndex`), enquanto rótulos de tela permanecem em português
 ("Painel do Paciente", "Índice de Bem-Estar").
+
+---
+
+## 🔏 Privacidade e LGPD
+
+O acompanhamento envolve dados de saúde — dado pessoal sensível (LGPD art. 11). O
+cadastro exige aceite da Política de Privacidade, registrado com data e versão do texto;
+contas anteriores à política pedem o aceite no próximo acesso. O titular baixa todos os
+seus dados em Perfil → "Baixar meus dados", e o conteúdo clínico (chat, anotações e
+orientações) é cifrado com AES-256-GCM antes de chegar ao banco.
+
+O texto vive em `web/src/content/privacyPolicy.ts` e está marcado como **rascunho
+pendente de revisão jurídica**. Detalhes operacionais em
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ---
 

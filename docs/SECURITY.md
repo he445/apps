@@ -36,6 +36,34 @@ Este documento registra os controles de segurança e o procedimento de implanta�
 
 6. Programe a rotação de qualquer `JWT_SECRET` menor que 32 caracteres. A rotação invalida os JWTs atuais, por isso deve ser comunicada e feita em uma janela controlada.
 
+## Consentimento e direitos do titular (LGPD)
+
+- O cadastro exige aceite da Política de Privacidade (`acceptedPrivacyPolicy`), gravado
+  em `User.consentedAt`/`consentVersion`. Sem ele a conta não é criada.
+- Contas criadas antes da política ficam com `consentedAt` nulo e caem num aviso
+  bloqueante no próximo acesso, com `POST /users/me/consent` para registrar. A página da
+  política é acessível nesse estado — ninguém pode aceitar um texto que não consegue ler.
+- Ao mudar o texto de forma relevante, atualize `CURRENT_PRIVACY_POLICY_VERSION`
+  (`api/src/auth/auth.module.ts`) **e** `PRIVACY_POLICY_VERSION`
+  (`web/src/content/privacyPolicy.ts`) juntas.
+- `GET /users/me/export` atende o direito de acesso e portabilidade. Deve ser usada
+  antes de `DELETE /users/me`, que apaga fisicamente o conteúdo clínico.
+- O texto atual é um **rascunho pendente de revisão jurídica** e o contato do
+  controlador está como campo a preencher.
+
+## Recuperação de senha
+
+Não há redefinição por e-mail: o produto não tem provedor de envio. O único caminho é
+`POST /admin/users/:userId/reset-password`, que gera uma senha temporária, grava só o
+hash, incrementa `tokenVersion` (derrubando as sessões do alvo) e registra em
+`AuditLog`. A senha aparece uma única vez na resposta e não é armazenada.
+
 ## Limites conhecidos
 
 O token de acesso fica em `sessionStorage`, reduzindo a persistência após fechar o navegador, mas não substitui proteção contra XSS. Mantenha a política de CSP, dependências e revisão de conteúdo de terceiros sob acompanhamento contínuo.
+
+`APP_ENCRYPTION_KEY` não tem plano de recuperação: se ela se perder, todo o conteúdo
+clínico cifrado torna-se ilegível em definitivo. Guarde-a fora do Render.
+
+O backfill da criptografia (`npm run backfill:encryption`) precisa ser executado uma vez
+em produção: o conteúdo gravado antes da criptografia ainda está em texto claro no banco.

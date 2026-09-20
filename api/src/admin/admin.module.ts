@@ -20,6 +20,7 @@ import { randomBytes } from 'crypto';
 import { CurrentUser, JwtUser, Roles, RolesGuard } from '../common/auth';
 import { EncryptionModule, EncryptionService } from '../common/encryption.service';
 import { PrismaModule, PrismaService } from '../common/prisma.service';
+import { CURRENT_PRIVACY_POLICY_VERSION } from '../auth/auth.module';
 import { TelemetryService } from '../common/telemetry.interceptor';
 
 /** How long persisted errors are kept. Pruned when an admin opens the panel. */
@@ -324,6 +325,9 @@ export class AdminService {
   async seedSandbox(admin: JwtUser) {
     const timestamp = Date.now();
     const demoPasswordHash = await bcrypt.hash('Demo1234!', 12);
+    // Demo accounts consent like any other: without it, logging in as a generated
+    // persona lands on the consent notice instead of the screen being tested.
+    const demoConsent = { consentedAt: new Date(), consentVersion: CURRENT_PRIVACY_POLICY_VERSION };
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Create Demo Psychologist
@@ -335,6 +339,7 @@ export class AdminService {
           role: Role.PROFESSIONAL,
           crp: '06/98765-TEST',
           isTestUser: true,
+          ...demoConsent,
           settings: {
             create: {
               pixKey: 'psi.demo@pix.test',
@@ -354,6 +359,7 @@ export class AdminService {
           role: Role.PATIENT,
           cpf: '111.222.333-44',
           isTestUser: true,
+          ...demoConsent,
         },
       });
 
@@ -365,6 +371,7 @@ export class AdminService {
           role: Role.PATIENT,
           cpf: '555.666.777-88',
           isTestUser: true,
+          ...demoConsent,
         },
       });
 

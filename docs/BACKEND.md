@@ -23,8 +23,8 @@ cp .env.example .env  # ou crie manualmente
 # Gerar Prisma Client
 npm run prisma:generate
 
-# Aplicar migrações
-npm run prisma:migrate
+# Aplicar migrações (o mesmo que roda no arranque em produção)
+npm run migrate:deploy
 
 # Iniciar em desenvolvimento (hot-reload)
 npm run start:dev
@@ -48,13 +48,17 @@ api/src/
 ├── main.ts                 # Bootstrap, Swagger, CORS, ValidationPipe
 ├── common/
 │   ├── auth.ts             # JwtAuthGuard, @Public(), @CurrentUser(), JwtUser
+│   ├── encryption.service.ts # AES-256-GCM do conteúdo clínico
+│   ├── telemetry.interceptor.ts # Estatísticas de rota e persistência de erros
 │   └── prisma.service.ts   # PrismaService + PrismaModule
 ├── auth/
-│   └── auth.module.ts      # Registro, login, preview de convite
+│   └── auth.module.ts      # Registro, login, consentimento, preview de convite
 ├── care/
-│   └── care.module.ts      # Consultas, avaliações, guidelines, chat, relatórios
+│   └── care.module.ts      # Consultas, avaliações, orientações, chat, relatórios
 ├── users/
-│   └── users.module.ts     # Perfil, senha, exclusão de conta
+│   └── users.module.ts     # Perfil, senha, exportação e exclusão de conta
+├── admin/
+│   └── admin.module.ts     # Painel, telemetria, reset de senha, sandbox
 └── prisma/
     └── schema.prisma       # Modelos e migrações
 ```
@@ -71,7 +75,7 @@ api/src/
 |--------|------|-----------|
 | `POST` | `/auth/register` | Cadastra novo usuário (PROFESSIONAL ou PATIENT) |
 | `POST` | `/auth/login` | Autentica e retorna JWT |
-| `GET` | `/auth/invitation/:token` | Pré-visualiza convite sem autenticação |
+| `GET` | `/auth/invitations/:token` | Pré-visualiza convite sem autenticação |
 
 **POST `/auth/register`**
 ```json
@@ -80,11 +84,16 @@ api/src/
   "email": "ana@email.com",
   "password": "MinhaSenh@123",
   "role": "PROFESSIONAL",
+  "acceptedPrivacyPolicy": true,
   "cpf": "123.456.789-00",
   "crp": "06/12345",
   "inviteToken": "ABC123"   // opcional — apenas para PATIENT com convite
 }
 ```
+
+`acceptedPrivacyPolicy` é **obrigatório**. Conteúdo clínico é dado pessoal sensível
+(LGPD art. 11) e a conta não é criada sem consentimento registrado; o servidor grava
+`consentedAt` e `consentVersion` no momento do cadastro.
 Resposta `201`:
 ```json
 {
@@ -130,6 +139,52 @@ removido.
 ```
 Token de uso único, validade de 7 dias. O convite anterior segue válido, para não
 quebrar links já enviados.
+
+---
+
+### 🔐 Usuários e direitos do titular
+
+| Método | Rota | Role | Descrição |
+|--------|------|------|-----------|
+| `PUT` | `/users/profile` | Ambos | Atualizar perfil, credenciais e configurações |
+| `GET` | `/users/me/export` | Todos | Baixar todos os dados do titular (LGPD art. 18) |
+| `POST` | `/users/me/consent` | Todos | Registrar aceite da política vigente |
+| `DELETE` | `/users/me` | Todos | Excluir a conta (soft-delete com retenção fiscal) |
+
+`GET /users/me/export` devolve cadastro, configurações, vínculo, convites, consultas,
+autoavaliações, orientações, mensagens e registros de auditoria. O conteúdo clínico vem
+**decifrado** e nenhuma coluna de ciphertext aparece na resposta. Precisa ser feita
+antes da exclusão: `DELETE /users/me` apaga fisicamente mensagens, autoavaliações e
+orientações.
+
+---
+
+### 🔐 Administração
+
+| Método | Rota | Role | Descrição |
+|--------|------|------|-----------|
+| `GET` | `/admin/overview` | ADMIN | Métricas e rede de psicólogos/pacientes |
+| `GET` | `/admin/telemetry/routes` | ADMIN | Estatísticas de rota (em memória) |
+| `GET` | `/admin/telemetry/errors` | ADMIN | Erros persistidos (últimos 100, poda 30 dias) |
+| `POST` | `/admin/users/:userId/reset-password` | ADMIN | Gerar senha temporária |
+| `POST` | `/admin/impersonate/:userId` | ADMIN | Simular conta de teste |
+| `POST` | `/admin/sandbox/seed` | ADMIN | Gerar massa de teste |
+| `DELETE` | `/admin/sandbox/clean` | ADMIN | Remover contas de teste |
+
+**POST `/admin/users/:userId/reset-password`** — sem body. Não existe recuperação de
+senha por e-mail: este é o único caminho. Resposta `201`:
+
+```json
+{
+  "message": "Senha temporária gerada. Ela não será exibida novamente.",
+  "email": "psicologo@exemplo.com",
+  "temporaryPassword": "wfCokwN9F5Cw"
+}
+```
+
+Só o hash vai para o banco; a senha aparece uma única vez na resposta. O
+`tokenVersion` do alvo é incrementado, o que derruba todas as sessões abertas dele.
+Cada reset grava uma linha em `AuditLog`.
 
 ---
 

@@ -72,6 +72,7 @@ async function runIntegrationSuite() {
           email: proEmail,
           password,
           role: 'PROFESSIONAL',
+          acceptedPrivacyPolicy: true,
           crp: '06/123456',
         }),
       });
@@ -136,6 +137,7 @@ async function runIntegrationSuite() {
           email: patEmail,
           password,
           role: 'PATIENT',
+          acceptedPrivacyPolicy: true,
           cpf: '123.456.789-00',
           inviteToken: inviteCode,
         }),
@@ -286,6 +288,7 @@ async function runIntegrationSuite() {
           email: adminEmail,
           password,
           role: 'ADMIN',
+          acceptedPrivacyPolicy: true,
         }),
       });
       if (res.status !== 403) throw new Error(`Esperado 403, recebido ${res.status}`);
@@ -377,7 +380,79 @@ async function runIntegrationSuite() {
       if (res.status !== 403) throw new Error(`Esperado 403 para Guardrail, recebido ${res.status}`);
     });
 
-    // 26. Limpeza Segura da Sandbox
+    // 26. Consentimento LGPD é obrigatório no cadastro
+    await testStep('POST /auth/register (sem consentimento LGPD é recusado)', async () => {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: 'Sem Aceite',
+          email: `sem-aceite-${timestamp}@ojanuan.app`,
+          password,
+          role: 'PROFESSIONAL',
+        }),
+      });
+      if (res.status !== 400) throw new Error(`Esperado 400, recebido ${res.status}`);
+      const created = await prisma.user.findUnique({ where: { email: `sem-aceite-${timestamp}@ojanuan.app` } });
+      if (created) throw new Error('Conta foi criada mesmo sem consentimento.');
+    });
+
+    // 27. O consentimento é registrado com data e versão
+    await testStep('Consentimento gravado com data e versão', async () => {
+      const registered = await prisma.user.findUnique({ where: { email: proEmail } });
+      if (!registered?.consentedAt) throw new Error('consentedAt não foi gravado.');
+      if (!registered.consentVersion) throw new Error('consentVersion não foi gravado.');
+    });
+
+    // 28. Reset de senha pelo admin invalida as sessões e troca a credencial
+    await testStep('POST /admin/users/:id/reset-password (senha temporária + sessões derrubadas)', async () => {
+      const before = await fetch(`${API_BASE}/care/professional/patients`, {
+        headers: { Authorization: `Bearer ${proAuthToken}` },
+      });
+      if (before.status !== 200) throw new Error(`Token do alvo deveria funcionar antes, veio ${before.status}`);
+
+      const res = await fetch(`${API_BASE}/admin/users/${proId}/reset-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 201 || !data.temporaryPassword) throw new Error(`Status ${res.status}`);
+
+      const after = await fetch(`${API_BASE}/care/professional/patients`, {
+        headers: { Authorization: `Bearer ${proAuthToken}` },
+      });
+      if (after.status !== 401) throw new Error(`Token antigo deveria ser recusado, veio ${after.status}`);
+
+      const relogin = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: proEmail, password: data.temporaryPassword }),
+      });
+      if (relogin.status !== 200) throw new Error(`Login com a senha temporária falhou: ${relogin.status}`);
+      const relogged: any = await relogin.json();
+      proAuthToken = relogged.accessToken;
+
+      const audit = await prisma.auditLog.findFirst({ where: { action: 'PASSWORD_RESET', targetId: proId } });
+      if (!audit) throw new Error('Reset não foi registrado em AuditLog.');
+    });
+
+    // 29. Exportação de dados do titular (LGPD art. 18)
+    await testStep('GET /users/me/export (dados decifrados, sem ciphertext)', async () => {
+      const res = await fetch(`${API_BASE}/users/me/export`, {
+        headers: { Authorization: `Bearer ${proAuthToken}` },
+      });
+      const data: any = await res.json();
+      if (res.status !== 200) throw new Error(`Status ${res.status}`);
+      if (!data.account?.email) throw new Error('Exportação sem dados de cadastro.');
+      if (!Array.isArray(data.guidelines)) throw new Error('Exportação sem a seção de orientações.');
+
+      const raw = JSON.stringify(data);
+      if (/encrypted|KeyVersion|quickNote|messageText/.test(raw)) {
+        throw new Error('Exportação vazou coluna interna ou ciphertext.');
+      }
+    });
+
+    // 30. Limpeza Segura da Sandbox
     await testStep('DELETE /admin/sandbox/clean (Limpeza Blindada de Testes)', async () => {
       const res = await fetch(`${API_BASE}/admin/sandbox/clean`, {
         method: 'DELETE',
